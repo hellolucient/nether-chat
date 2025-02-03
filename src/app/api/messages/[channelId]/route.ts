@@ -1,19 +1,22 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { sendMessage, getChannelMessages } from '@/lib/discord'
 import { supabase } from '@/lib/supabase'
 
-// Add this specific type from Next.js
-type Params = { params: { channelId: string } }
+// Define the context type exactly as Next.js expects
+type Context = {
+  params: {
+    channelId: string
+  }
+}
 
 // GET handler for fetching messages
 export async function GET(
-  request: Request,
-  params: Params  // Use it as a whole object, not destructured
+  req: NextRequest,
+  context: Context  // Use the full context object
 ) {
   try {
-    const channelId = params.params.channelId  // Access through params.params
-    const url = new URL(request.url)  // Use URL API instead of nextUrl
-    const wallet = url.searchParams.get('wallet')
+    const { channelId } = context.params  // Access through context.params
+    const wallet = req.nextUrl.searchParams.get('wallet')
 
     if (!channelId || !wallet) {
       return NextResponse.json(
@@ -37,7 +40,7 @@ export async function GET(
     }
 
     console.log('👋 API Route: Received request for messages')
-    console.log('🔍 API Route: Request URL:', request.url)
+    console.log('🔍 API Route: Request URL:', req.nextUrl)
     console.log('🔑 API Route: Channel ID from params:', channelId)
 
     console.log('🎯 API Route: Starting message fetch for channel:', channelId)
@@ -72,12 +75,12 @@ export async function GET(
 
 // POST handler for sending messages
 export async function POST(
-  request: Request,
-  params: Params  // Same type here
+  req: NextRequest,
+  context: Context  // Same type here
 ) {
   try {
-    const channelId = params.params.channelId
-    const { content } = await request.json()
+    const { channelId } = context.params  // Access through context.params
+    const { content } = await req.json()
 
     console.log('📨 API: Received message request:', { 
       channelId,
@@ -105,7 +108,7 @@ export async function POST(
       await sendMessage(channelId, content)
     }
 
-    return new Response('Message sent', { status: 200 })
+    return NextResponse.json({ message: 'Message sent' }, { status: 200 })
   } catch (error) {
     console.error('❌ API: Error sending message:', error)
     return NextResponse.json(
