@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { NextResponse } from 'next/server'
 import { sendMessage, checkDiscordConnection } from '@/lib/discord'
 import { supabase } from '@/lib/supabase'

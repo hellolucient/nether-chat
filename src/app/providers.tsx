@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 'use client'
 
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base'

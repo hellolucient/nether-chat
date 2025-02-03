@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { supabase } from '@/lib/supabase'
 import { useUnread } from '@/contexts/UnreadContext'
@@ -19,8 +19,7 @@ export function ChannelList({ onSelectChannel }: Props) {
   const { publicKey } = useWallet()
   const [channels, setChannels] = useState<Channel[]>([])
 
-  // Add this new function to check all channels
-  const checkUnreadMessages = async (channels: Channel[]) => {
+  const checkUnreadMessages = useCallback(async (channels: Channel[]) => {
     if (!publicKey) return
 
     for (const channel of channels) {
@@ -53,7 +52,7 @@ export function ChannelList({ onSelectChannel }: Props) {
         }
       }
     }
-  }
+  }, [publicKey, markChannelAsUnread])
 
   useEffect(() => {
     async function fetchChannels() {
@@ -87,35 +86,13 @@ export function ChannelList({ onSelectChannel }: Props) {
     }
 
     fetchChannels()
-  }, [publicKey])
+  }, [publicKey, checkUnreadMessages])
 
   // Add real-time subscription
   useEffect(() => {
     if (!channels.length || !publicKey) return
-
-    // Initial check
     checkUnreadMessages(channels)
-
-    // Subscribe to new messages
-    const subscription = supabase
-      .channel('messages')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages'
-      }, (payload) => {
-        console.log('New message received:', payload)
-        // Check if this message is for any of our channels
-        if (channels.some(c => c.id === payload.new.channel_id)) {
-          checkUnreadMessages([{ id: payload.new.channel_id, name: '' }])
-        }
-      })
-      .subscribe()
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [channels, publicKey])
+  }, [channels, publicKey, checkUnreadMessages])
 
   console.log('ChannelList render:', {
     channels: channels.map(c => c.id),

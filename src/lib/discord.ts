@@ -2,8 +2,6 @@ import {
   Client, 
   GatewayIntentBits, 
   TextChannel, 
-  DMChannel,
-  NewsChannel,
   Message,
   BaseGuildTextChannel
 } from 'discord.js'
@@ -12,8 +10,6 @@ import { cleanupOldImages } from '@/lib/storage'
 import type { Message as AppMessage } from '@/types' // Import our Message type
 
 let client: Client | null = null;
-let retryCount = 0;
-const MAX_RETRIES = 3;
 
 // Add these types at the top of the file
 interface ImageMessage {

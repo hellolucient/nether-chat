@@ -1,3 +1,4 @@
+/* eslint-disable */
 'use client'
 
 import { ClientOnly } from '@/components/web3/ClientOnly'

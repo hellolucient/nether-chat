@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import type { Message } from '@/types'
@@ -21,31 +21,15 @@ interface MessageContent {
   }
 }
 
-interface MessageUpdate {
-  channelId: string
-  messageId: string
-  type: 'text' | 'sticker' | 'emoji' | 'image'
-  timestamp: string
-}
-
 export function Chat({ channelId }: ChatProps) {
   const { publicKey } = useWallet()
   const { markChannelAsRead, markChannelAsUnread } = useUnread()
   const [messages, setMessages] = useState<Message[]>([])
-  const [lastMessageId, setLastMessageId] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [authorized, setAuthorized] = useState(false)
   const [replyTo, setReplyTo] = useState<Message | null>(null)
 
-  const getLastReadTime = (channelId: string) => {
-    return localStorage.getItem(`lastRead_${channelId}`) || ''
-  }
-
-  const setLastReadTime = (channelId: string) => {
-    localStorage.setItem(`lastRead_${channelId}`, new Date().toISOString())
-  }
-
-  const checkAccess = async () => {
+  const checkAccess = useCallback(async () => {
     if (!publicKey) return
 
     const { data } = await supabase
@@ -60,9 +44,9 @@ export function Chat({ channelId }: ChatProps) {
       setAuthorized(false)
     }
     setLoading(false)
-  }
+  }, [publicKey, channelId])
 
-  const fetchMessages = async () => {
+  const fetchMessages = useCallback(async () => {
     if (!channelId || !publicKey) {
       console.log('⚠️ Chat: No channelId or wallet provided')
       return
@@ -93,7 +77,7 @@ export function Chat({ channelId }: ChatProps) {
         setLoading(false)
       }
     }
-  }
+  }, [channelId, publicKey])
 
   // Fetch messages and check access
   useEffect(() => {
@@ -101,10 +85,10 @@ export function Chat({ channelId }: ChatProps) {
       fetchMessages()
       checkAccess()
     }
-  }, [channelId, publicKey])
+  }, [channelId, publicKey, fetchMessages, checkAccess])
 
   // Update last viewed time in database
-  const updateLastViewed = async () => {
+  const updateLastViewed = useCallback(async () => {
     if (!channelId || !publicKey) return
 
     try {
@@ -129,7 +113,7 @@ export function Chat({ channelId }: ChatProps) {
     } catch (err) {
       console.error('Failed to update last_viewed:', err)
     }
-  }
+  }, [channelId, publicKey])
 
   // Handle focus changes
   useEffect(() => {
@@ -150,7 +134,7 @@ export function Chat({ channelId }: ChatProps) {
       window.removeEventListener('focus', handleFocus)
       window.removeEventListener('blur', handleFocus)
     }
-  }, [channelId, publicKey])
+  }, [channelId, publicKey, updateLastViewed, markChannelAsRead])
 
   // Check for new messages
   useEffect(() => {
@@ -183,18 +167,7 @@ export function Chat({ channelId }: ChatProps) {
     }
 
     checkNewMessages()
-  }, [messages, channelId, publicKey])
-
-  const handleReplyTo = (message: { 
-    id: string
-    author: { username: string }
-    content: string 
-  }) => {
-    setReplyTo({
-      ...message,
-      timestamp: new Date().toISOString() // Add timestamp for Message type
-    })
-  }
+  }, [messages, channelId, publicKey, markChannelAsUnread])
 
   const handleSendMessage = async (content: string | MessageContent) => {
     try {
@@ -227,7 +200,7 @@ export function Chat({ channelId }: ChatProps) {
     return (
       <div className="flex-1 p-4">
         <div className="text-center text-red-400">
-          You don't have access to this channel
+          You don&apos;t have access to this channel
         </div>
       </div>
     )
@@ -239,7 +212,6 @@ export function Chat({ channelId }: ChatProps) {
         <MessageList 
           messages={messages} 
           loading={loading}
-          onReplyTo={handleReplyTo}
           channelId={channelId}
           onRefresh={fetchMessages}
         />

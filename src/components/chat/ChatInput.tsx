@@ -3,7 +3,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { MentionAutocomplete } from './MentionAutocomplete'
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react'
-import { FaceSmileIcon, XMarkIcon, GifIcon, ArrowPathIcon, PaperAirplaneIcon, PhotoIcon } from '@heroicons/react/24/outline'
+import { 
+  FaceSmileIcon, 
+  XMarkIcon, 
+  GifIcon, 
+  ArrowPathIcon, 
+  PhotoIcon 
+} from '@heroicons/react/24/outline'
 import { uploadImage } from '@/lib/storage'
 
 interface ChatInputProps {
@@ -12,6 +18,14 @@ interface ChatInputProps {
   replyTo: Message | null
   onCancelReply: () => void
   onRefreshMessages: () => Promise<void>
+}
+
+interface TenorGifResult {
+  id: string
+  media_formats: {
+    gif: { url: string }
+    tinygif: { url: string }
+  }
 }
 
 export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, onRefreshMessages }: ChatInputProps) {
@@ -82,7 +96,7 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
         `https://tenor.googleapis.com/v2/search?q=${query}&key=${process.env.NEXT_PUBLIC_TENOR_API_KEY}&limit=20`
       )
       const data = await response.json()
-      setGifs(data.results.map((gif: any) => ({
+      setGifs(data.results.map((gif: TenorGifResult) => ({
         id: gif.id,
         url: gif.media_formats.gif.url,
         preview: gif.media_formats.tinygif.url,

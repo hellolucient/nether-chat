@@ -1,26 +1,13 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { ArrowPathIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline'
+import { ArrowPathIcon } from '@heroicons/react/24/outline'
 import type { Message } from '@/types'
 
 function formatDiscordMessage(content: string): string {
   // Handle custom emojis <:name:id> or <a:name:id>
   return content.replace(/<a?:\w+:\d+>/g, '🔸') // Replace with a placeholder for now
   // Later we can fetch the actual emoji URLs using the ID
-}
-
-function isGifUrl(content: string): boolean {
-  // Check if the content is just a URL and ends with .gif
-  const trimmed = content.trim()
-  return (
-    trimmed.startsWith('http') && 
-    (
-      trimmed.endsWith('.gif') ||
-      trimmed.includes('tenor.com') ||
-      trimmed.includes('giphy.com')
-    )
-  )
 }
 
 function formatMessageContent(content: string) {
@@ -103,12 +90,11 @@ function MessageContent({ message }: { message: Message }) {
 interface MessageListProps {
   messages: Message[]
   loading: boolean
-  onReplyTo: (message: Message) => void
   channelId: string
   onRefresh: () => Promise<void>
 }
 
-export function MessageList({ messages, loading, onReplyTo, channelId, onRefresh }: MessageListProps) {
+export function MessageList({ messages, loading, channelId, onRefresh }: MessageListProps) {
   const [refreshing, setRefreshing] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 

@@ -40,10 +40,10 @@ export async function getChannelMessages(channelId: string) {
 }
 
 // Add this type and function
-type LastViewed = {
-  channel_id: string
-  last_viewed: string
-}
+// type LastViewed = {
+//   channel_id: string
+//   last_viewed: string
+// }
 
 export async function updateLastViewed(channelId: string) {
   try {
@@ -136,7 +136,7 @@ export async function initializeLastViewed() {
         const channelId = channel.channel_id
         console.log('🔍 Supabase: Checking last_viewed for channel:', channelId)
         
-        const { data: existing, error: checkError } = await supabase
+        const { error: checkError } = await supabase
           .from('last_viewed')
           .select('*')
           .eq('channel_id', channelId)

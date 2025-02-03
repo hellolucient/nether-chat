@@ -2,9 +2,7 @@ import { supabase } from './supabase'
 import imageCompression from 'browser-image-compression' // We'll need to install this
 
 // Define the expected response type
-interface PublicUrlResponse {
-  publicUrl: string;
-}
+// Remove PublicUrlResponse if not used
 
 export async function uploadImage(file: File) {
   try {
