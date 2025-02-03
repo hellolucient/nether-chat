@@ -2,19 +2,16 @@ import { NextResponse } from 'next/server'
 import { sendMessage, getChannelMessages } from '@/lib/discord'
 import { supabase } from '@/lib/supabase'
 
-type Props = {
-  params: {
-    channelId: string
-  }
-}
+// Add this specific type from Next.js
+type Params = { params: { channelId: string } }
 
 // GET handler for fetching messages
 export async function GET(
   request: Request,
-  props: Props
+  params: Params  // Use it as a whole object, not destructured
 ) {
   try {
-    const { channelId } = props.params
+    const channelId = params.params.channelId  // Access through params.params
     const url = new URL(request.url)  // Use URL API instead of nextUrl
     const wallet = url.searchParams.get('wallet')
 
@@ -76,10 +73,10 @@ export async function GET(
 // POST handler for sending messages
 export async function POST(
   request: Request,
-  props: Props
+  params: Params  // Same type here
 ) {
   try {
-    const { channelId } = props.params
+    const channelId = params.params.channelId
     const { content } = await request.json()
 
     console.log('📨 API: Received message request:', { 
