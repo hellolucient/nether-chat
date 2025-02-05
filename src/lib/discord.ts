@@ -9,7 +9,7 @@ import { supabase } from '@/lib/supabase'
 import { cleanupOldImages } from '@/lib/storage'
 import type { Message as AppMessage } from '@/types' // Import our Message type
 
-let client: Client | null = null;
+let client: Client | null = null
 
 // Add these types at the top of the file
 interface ImageMessage {
@@ -32,6 +32,27 @@ interface TextMessage {
 }
 
 type MessageContent = string | ImageMessage | TextMessage
+
+export async function initializeDiscordBot() {
+  try {
+    if (!client) {
+      client = new Client({
+        intents: [
+          GatewayIntentBits.Guilds,
+          GatewayIntentBits.GuildMessages,
+          GatewayIntentBits.MessageContent,
+        ]
+      })
+    }
+    await client.login(process.env.DISCORD_BOT_TOKEN)
+    console.log('Discord bot initialized')
+  } catch (error) {
+    console.error('Failed to initialize Discord bot:', error)
+    throw error
+  }
+}
+
+export { client }
 
 export async function getDiscordClient() {
   // Add retries for client initialization

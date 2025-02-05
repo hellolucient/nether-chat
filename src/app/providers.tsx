@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
 'use client'
 
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base'
@@ -8,9 +7,8 @@ import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adap
 import { BackpackWalletAdapter } from '@solana/wallet-adapter-backpack'
 import { clusterApiUrl } from '@solana/web3.js'
 import { useMemo } from 'react'
-
-// Import the styles
-require('@solana/wallet-adapter-react-ui/styles.css')
+// Import styles directly instead of using require
+import '@solana/wallet-adapter-react-ui/styles.css'
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // We're using mainnet-beta

@@ -15,9 +15,10 @@ interface Props {
     left: number
   }
   onSelect: (user: { displayName: string }) => void
+  onClose: () => void
 }
 
-export function MentionAutocomplete({ query, position, onSelect }: Props) {
+export function MentionAutocomplete({ query, position, onSelect, onClose }: Props) {
   const [users, setUsers] = useState<User[]>([])
   const ref = useRef<HTMLDivElement>(null)
 
@@ -49,7 +50,10 @@ export function MentionAutocomplete({ query, position, onSelect }: Props) {
         <button
           key={user.id}
           className={`w-full px-3 py-2 text-left hover:bg-gray-100`}
-          onClick={() => onSelect(user)}
+          onClick={() => {
+            onSelect(user)
+            onClose()
+          }}
         >
           <span className="font-medium">@{user.displayName}</span>
           {user.username !== user.displayName && (

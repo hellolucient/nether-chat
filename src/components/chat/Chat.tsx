@@ -207,8 +207,8 @@ export function Chat({ channelId }: ChatProps) {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full">
-      <div className="flex-1 min-h-0 overflow-y-auto">
+    <div className="h-full flex flex-col">
+      <div className="flex-1 min-h-0">
         <MessageList 
           messages={messages} 
           loading={loading}
@@ -216,7 +216,7 @@ export function Chat({ channelId }: ChatProps) {
           onRefresh={fetchMessages}
         />
       </div>
-      <div className="mt-auto">
+      <div className="mt-auto border-t border-[#262626]">
         <ChatInput 
           channelId={channelId}
           onSendMessage={handleSendMessage}

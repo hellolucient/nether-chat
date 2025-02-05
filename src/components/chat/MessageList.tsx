@@ -15,11 +15,14 @@ function formatMessageContent(content: string) {
   if (content.startsWith('__GIF__')) {
     const gifUrl = content.replace('__GIF__', '')
     return (
-      <img 
-        src={gifUrl} 
-        alt="GIF" 
-        className="max-w-[300px] rounded-lg"
-      />
+      <div className="!w-[200px] !h-[200px] overflow-hidden">
+        <img 
+          src={gifUrl} 
+          alt="GIF" 
+          className="!w-full !h-full !object-contain" 
+          style={{ maxWidth: '200px', maxHeight: '200px' }}
+        />
+      </div>
     )
   }
 
@@ -28,6 +31,7 @@ function formatMessageContent(content: string) {
 }
 
 function MessageContent({ message }: { message: Message }) {
+  console.log('Rendering message content:', message)
   const { content, attachments, embeds, stickers } = message
 
   return (
@@ -39,13 +43,15 @@ function MessageContent({ message }: { message: Message }) {
       {attachments?.map((attachment, index) => {
         if (attachment.content_type?.startsWith('image/')) {
           return (
-            <img 
-              key={`attachment-${index}`}
-              src={attachment.url}
-              alt="Attachment"
-              className="max-w-[300px] rounded-lg mb-2"
-              loading="lazy"
-            />
+            <div key={`attachment-${index}`} className="!w-[200px] !h-[200px] overflow-hidden">
+              <img 
+                src={attachment.url}
+                alt="Attachment"
+                className="!w-full !h-full !object-contain"
+                style={{ maxWidth: '200px', maxHeight: '200px' }}
+                loading="lazy"
+              />
+            </div>
           )
         }
         return null
@@ -53,13 +59,15 @@ function MessageContent({ message }: { message: Message }) {
 
       {/* Stickers */}
       {stickers?.map((sticker, index) => (
-        <img
-          key={`sticker-${index}`}
-          src={sticker.url}
-          alt={sticker.name}
-          className="max-w-[200px] rounded-lg mb-2"
-          loading="lazy"
-        />
+        <div key={`sticker-${index}`} className="!w-[200px] !h-[200px] overflow-hidden">
+          <img
+            src={sticker.url}
+            alt={sticker.name}
+            className="!w-full !h-full !object-contain"
+            style={{ maxWidth: '200px', maxHeight: '200px' }}
+            loading="lazy"
+          />
+        </div>
       ))}
 
       {/* Embeds (links, GIFs) */}
@@ -72,13 +80,15 @@ function MessageContent({ message }: { message: Message }) {
           embed.type === 'image'
         )) {
           return (
-            <img 
-              key={`embed-${index}`}
-              src={imageUrl}
-              alt="Embedded content"
-              className="max-w-[300px] rounded-lg mb-2"
-              loading="lazy"
-            />
+            <div key={`embed-${index}`} className="!w-[200px] !h-[200px] overflow-hidden">
+              <img 
+                src={imageUrl}
+                alt="Embedded content"
+                className="!w-full !h-full !object-contain"
+                style={{ maxWidth: '200px', maxHeight: '200px' }}
+                loading="lazy"
+              />
+            </div>
           )
         }
         return null
@@ -143,7 +153,7 @@ export function MessageList({ messages, loading, channelId, onRefresh }: Message
   }
 
   return (
-    <div className="flex flex-col flex-1">
+    <div className="flex flex-col h-full">
       {/* Header */}
       <div className="p-4 border-b border-[#262626] flex justify-between items-center">
         <h2 className="font-semibold text-purple-300">Messages</h2>
@@ -157,7 +167,7 @@ export function MessageList({ messages, loading, channelId, onRefresh }: Message
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-[calc(100vh-73px-80px)]">
+      <div className="flex-1 overflow-y-auto p-4">
         {loading ? (
           <div className="text-center text-gray-400">Loading messages...</div>
         ) : messages.length === 0 ? (
@@ -165,7 +175,7 @@ export function MessageList({ messages, loading, channelId, onRefresh }: Message
             No messages in the last 48 hours
           </div>
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-4">
             {messages.map((message) => (
               <div key={message.id} className="flex gap-2">
                 {/* Message content */}
@@ -184,7 +194,6 @@ export function MessageList({ messages, loading, channelId, onRefresh }: Message
             ))}
           </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
     </div>
   )

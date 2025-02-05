@@ -22,8 +22,21 @@ const nextConfig = {
       type: 'javascript/auto',
     })
 
+    // Add a rule to handle discord.js and its dependencies
+    config.module.rules.push({
+      test: /\.js$/,
+      include: [
+        /node_modules\/(discord\.js|@discordjs|undici)/
+      ],
+      type: 'javascript/auto',
+    })
+
     return config
   },
+  // Needed for discord.js
+  experimental: {
+    serverComponentsExternalPackages: ['discord.js']
+  }
 }
 
 module.exports = nextConfig 

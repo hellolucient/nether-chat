@@ -11,6 +11,19 @@ import {
   PhotoIcon 
 } from '@heroicons/react/24/outline'
 import { uploadImage } from '@/lib/storage'
+import type { Message } from '@/types'
+import { GifPicker } from './GifPicker'
+
+// Update MessageContent interface to include content
+interface MessageContent {
+  type: string
+  url: string
+  content?: string
+  reply?: {
+    messageReference: { messageId: string }
+    quotedContent: string
+  }
+}
 
 interface ChatInputProps {
   channelId: string

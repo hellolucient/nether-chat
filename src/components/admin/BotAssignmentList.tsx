@@ -4,11 +4,31 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { TrashIcon } from '@heroicons/react/24/outline'
 
+// Define types for raw data from API/DB
+interface RawAssignment {
+  id: string
+  name: string
+  wallet_address: string
+  mappings: {
+    channel_id: string
+  }[]
+}
+
+// Define channel type
+interface Channel {
+  id: string
+  name: string
+}
+
+// Define final assignment type
 type BotAssignment = {
   id: string
   name: string
   wallet_address: string
-  channels: { channel_id: string; name: string }[]
+  channels: {
+    channel_id: string
+    name: string
+  }[]
 }
 
 interface BotAssignmentListProps {
@@ -27,7 +47,6 @@ export function BotAssignmentList({ onUpdate }: BotAssignmentListProps) {
 
   const fetchAssignments = async () => {
     try {
-      // Fetch assignments with channel access
       const { data: assignmentsData, error: assignmentsError } = await supabase
         .from('bot_assignments')
         .select(`
@@ -45,7 +64,6 @@ export function BotAssignmentList({ onUpdate }: BotAssignmentListProps) {
         return
       }
 
-      // Fetch channel names
       const response = await fetch('/api/channels')
       const { channels, error: channelsError } = await response.json()
       
@@ -54,18 +72,20 @@ export function BotAssignmentList({ onUpdate }: BotAssignmentListProps) {
         return
       }
 
-      const channelMap = new Map(channels.map(c => [c.id, c.name]))
+      const channelMap = new Map(channels.map((c: Channel) => [c.id, c.name]))
 
-      // Combine data
-      const assignmentsWithChannels = assignmentsData?.map(assignment => ({
-        ...assignment,
+      // Fixed typing and null checking
+      const assignmentsWithChannels = (assignmentsData || []).map((assignment): BotAssignment => ({
+        id: assignment.id,
+        name: assignment.name,
+        wallet_address: assignment.wallet_address,
         channels: assignment.mappings.map(c => ({
           channel_id: c.channel_id,
-          name: channelMap.get(c.channel_id) || 'Unknown Channel'
+          name: String(channelMap.get(c.channel_id) || 'Unknown Channel') // Force string type
         }))
       }))
 
-      setAssignments(assignmentsWithChannels || [])
+      setAssignments(assignmentsWithChannels)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch assignments')
     } finally {

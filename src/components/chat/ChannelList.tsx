@@ -100,26 +100,20 @@ export function ChannelList({ onSelectChannel }: Props) {
   })
 
   return (
-    <div className="space-y-2">
-      {channels.map(channel => {
-        const hasUnread = unreadChannels.has(channel.id)
-        console.log(`Channel ${channel.id}:`, { hasUnread })
-        
-        return (
+    <div className="flex flex-col space-y-2 w-full">
+      {channels.map(channel => (
+        <div key={channel.id} className="w-full">
           <button
-            key={channel.id}
-            onClick={() => {
-              onSelectChannel(channel.id)
-            }}
-            className="w-full text-left px-2 py-1 rounded hover:bg-[#262626] transition-colors flex justify-between items-center"
+            onClick={() => onSelectChannel(channel.id)}
+            className="w-full text-left p-2 hover:bg-[#262626] rounded-md flex items-center"
           >
-            <span>{channel.name}</span>
-            {hasUnread && (
-              <span className="w-2 h-2 rounded-full bg-purple-500" />
+            <span className="flex-grow">{channel.name}</span>
+            {unreadChannels.has(channel.id) && (
+              <span className="w-2 h-2 bg-blue-500 rounded-full" />
             )}
           </button>
-        )
-      })}
+        </div>
+      ))}
     </div>
   )
 } 

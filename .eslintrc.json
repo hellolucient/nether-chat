@@ -8,5 +8,7 @@
     "react-hooks/exhaustive-deps": "warn",
     "@typescript-eslint/no-require-imports": "off",
     "react/no-unescaped-entities": "off"
-  }
+  },
+  "plugins": ["@typescript-eslint"],
+  "parser": "@typescript-eslint/parser"
 } 
