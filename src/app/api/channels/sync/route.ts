@@ -11,15 +11,23 @@ interface ChannelMapping {
 
 export async function POST() {
   try {
-    // Get all channels from Discord
+    console.log('🔄 Starting channel sync...')
     const client = await getDiscordClient()
     const guild = await client.guilds.fetch(process.env.DISCORD_SERVER_ID!)
     const channels = await guild.channels.fetch()
+    
+    console.log('🔄 Found Discord channels:', 
+      Array.from(channels.values())
+        .filter(c => c?.type === 0)
+        .map(c => ({ id: c!.id, name: c!.name }))
+    )
     
     // Get existing channel mappings
     const { data: existingMappings } = await supabase
       .from('channel_mappings')
       .select('channel_id')
+    
+    console.log('🔄 Existing mappings:', existingMappings)
     
     const existingChannelIds = new Set(existingMappings?.map(m => m.channel_id))
     

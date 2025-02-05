@@ -33,14 +33,17 @@ export function AdminPanel() {
 
   const fetchServerChannels = async () => {
     try {
+      console.log('🔍 Fetching server channels...')
       const response = await fetch('/api/channels')
       const { channels } = await response.json()
+      console.log('🔍 Got channels from Discord:', channels)
       
       const channelMap: Record<string, string> = {}
       channels.forEach((channel: { id: string; name: string }) => {
         channelMap[channel.id] = channel.name
       })
       
+      console.log('🔍 Channel map:', channelMap)
       setAllChannels(channelMap)
     } catch (error) {
       console.error('Error fetching server channels:', error)
@@ -155,13 +158,6 @@ export function AdminPanel() {
       setSelectedChannels(new Set(channelIds))
     }
   }, [editingProfile, profiles])
-
-  // Channel names mapping
-  const channelNames: Record<string, string> = {
-    '1334725207360802881': '#general',
-    '1334725297794187318': '#gen-chat',
-    '1334725342652403783': '#alpha'
-  }
 
   // Add sync function
   const syncChannels = async () => {
