@@ -36,6 +36,18 @@ export async function POST() {
     )
     console.log('🔄 Valid Discord channel IDs:', Array.from(validChannelIds))
 
+    // First, delete all existing mappings
+    const { error: deleteError } = await supabase
+      .from('channel_mappings')
+      .delete()
+      .neq('id', 'dummy') // Delete all rows
+
+    if (deleteError) {
+      console.error('❌ Delete error:', deleteError)
+      throw deleteError
+    }
+    console.log('✅ Cleared existing mappings')
+
     // Get all bot assignments
     const { data: assignments, error: assignmentError } = await supabase
       .from('bot_assignments')
@@ -67,12 +79,12 @@ export async function POST() {
         console.error('❌ Insert error:', insertError)
         throw insertError
       }
-      console.log('✅ Restored channel mappings:', newMappings.length)
+      console.log('✅ Created channel mappings:', newMappings.length)
     }
 
     return NextResponse.json({ 
       success: true, 
-      message: `Restored ${newMappings.length} channel mappings` 
+      message: `Created ${newMappings.length} channel mappings` 
     })
 
   } catch (error) {
