@@ -57,10 +57,19 @@ export function ChannelList({ onSelectChannel }: Props) {
   const fetchChannels = async () => {
     try {
       console.log('🔍 ChannelList: Fetching channels...')
+      
+      // Guard against undefined publicKey
+      if (!publicKey) {
+        console.log('No wallet connected, skipping channel fetch')
+        setChannels([])
+        return
+      }
+
       const response = await fetch('/api/channels')
       console.log('🔍 ChannelList: Got response:', response.status)
       const data = await response.json()
       console.log('🔍 ChannelList: Got data:', data)
+
       // First get the bot assignment for this wallet
       const { data: assignments, error: assignmentError } = await supabase
         .from('bot_assignments')
@@ -68,31 +77,44 @@ export function ChannelList({ onSelectChannel }: Props) {
           id,
           channels:channel_mappings(channel_id)
         `)
-        .eq('wallet_address', publicKey?.toString())
+        .eq('wallet_address', publicKey.toString())
         .single()
 
-      if (assignmentError) throw assignmentError
+      if (assignmentError) {
+        if (assignmentError.code === 'PGRST116') {
+          // No bot assignment found for this wallet
+          console.log('No bot assignment found for wallet')
+          setChannels([])
+          return
+        }
+        throw assignmentError
+      }
 
       // Get the channel IDs this user has access to
       const channelIds = assignments?.channels?.map(c => c.channel_id) || []
+      console.log('Channel IDs for wallet:', channelIds)
 
-      // Then fetch channel details from Discord
       const allChannels = data.channels || []
+      console.log('All available channels:', allChannels)
 
       // Filter to only show channels the user has access to
       const accessibleChannels = allChannels.filter(
         channel => channelIds.includes(channel.id)
       )
+      console.log('Accessible channels:', accessibleChannels)
 
       setChannels(accessibleChannels)
     } catch (error) {
       console.error('Error fetching channels:', error)
+      setChannels([])
     }
   }
 
   useEffect(() => {
-    fetchChannels()
-  }, [publicKey, fetchChannels])
+    if (publicKey) {  // Only fetch if we have a publicKey
+      fetchChannels()
+    }
+  }, [publicKey]) // Remove fetchChannels from deps to avoid recreation
 
   // Add real-time subscription
   useEffect(() => {
