@@ -17,17 +17,27 @@ export async function POST() {
   console.log(`🔄 [${requestId}] Starting channel sync...`)
 
   try {
+    console.log('🔄 Getting Discord client...')
     const client = await getDiscordClient().catch(error => {
-      console.error(`❌ [${requestId}] Discord client error:`, error)
+      console.error(`❌ [${requestId}] Discord client error:`, {
+        error,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      })
       throw error
     })
 
+    console.log('🔄 Fetching guild...')
     const guild = await client.guilds.fetch(process.env.DISCORD_SERVER_ID!).catch(error => {
-      console.error(`❌ [${requestId}] Guild fetch error:`, error)
+      console.error(`❌ [${requestId}] Guild fetch error:`, {
+        error,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      })
       throw error
     })
 
-    // Get all valid Discord text channel IDs
+    console.log('🔄 Fetching channels...')
     const channels = await guild.channels.fetch()
     const validChannelIds = new Set(
       Array.from(channels.values())
@@ -37,23 +47,38 @@ export async function POST() {
     console.log('🔄 Valid Discord channel IDs:', Array.from(validChannelIds))
 
     // First, delete all existing mappings
+    console.log('🔄 Deleting existing mappings...')
     const { error: deleteError } = await supabase
       .from('channel_mappings')
       .delete()
       .neq('id', 'dummy') // Delete all rows
 
     if (deleteError) {
-      console.error('❌ Delete error:', deleteError)
+      console.error('❌ Delete error:', {
+        error: deleteError,
+        message: deleteError.message,
+        details: deleteError.details
+      })
       throw deleteError
     }
     console.log('✅ Cleared existing mappings')
 
     // Get all bot assignments
+    console.log('🔄 Fetching bot assignments...')
     const { data: assignments, error: assignmentError } = await supabase
       .from('bot_assignments')
       .select('id, wallet_address')
 
-    if (assignmentError) throw assignmentError
+    if (assignmentError) {
+      console.error('❌ Assignment fetch error:', {
+        error: assignmentError,
+        message: assignmentError.message,
+        details: assignmentError.details
+      })
+      throw assignmentError
+    }
+
+    console.log('🔄 Found assignments:', assignments)
 
     // Create mappings for each user
     const newMappings: ChannelMapping[] = []
@@ -69,6 +94,7 @@ export async function POST() {
     }
 
     console.log(`🔄 Creating ${newMappings.length} channel mappings...`)
+    console.log('First mapping example:', newMappings[0])
 
     if (newMappings.length > 0) {
       const { error: insertError } = await supabase
@@ -76,7 +102,12 @@ export async function POST() {
         .insert(newMappings)
 
       if (insertError) {
-        console.error('❌ Insert error:', insertError)
+        console.error('❌ Insert error:', {
+          error: insertError,
+          message: insertError.message,
+          details: insertError.details,
+          firstMapping: newMappings[0]
+        })
         throw insertError
       }
       console.log('✅ Created channel mappings:', newMappings.length)
@@ -88,10 +119,17 @@ export async function POST() {
     })
 
   } catch (error) {
-    console.error(`❌ [${requestId}] Sync failed:`, error)
+    console.error(`❌ [${requestId}] Sync failed:`, {
+      error,
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      timestamp: new Date().toISOString()
+    })
     return NextResponse.json({
       error: 'Failed to sync channels',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
+      requestId,
+      timestamp: new Date().toISOString()
     }, { status: 500 })
   }
 } 
