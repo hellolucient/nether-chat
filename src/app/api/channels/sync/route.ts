@@ -11,43 +11,43 @@ interface ChannelMapping {
 
 export async function POST() {
   try {
-    // Verify environment variables first
-    if (!process.env.DISCORD_BOT_TOKEN) {
-      console.error('❌ Missing DISCORD_BOT_TOKEN')
-      return NextResponse.json(
-        { error: 'Discord bot token not configured' },
-        { status: 500 }
-      )
-    }
-    if (!process.env.DISCORD_SERVER_ID) {
-      console.error('❌ Missing DISCORD_SERVER_ID')
-      return NextResponse.json(
-        { error: 'Discord server ID not configured' },
-        { status: 500 }
-      )
+    // Add request ID for tracing
+    const requestId = Math.random().toString(36).substring(7)
+    console.log(`🔄 [${requestId}] Starting channel sync...`)
+
+    const client = await getDiscordClient().catch(error => {
+      console.error(`❌ [${requestId}] Discord client error:`, error)
+      throw new Error('Failed to initialize Discord client')
+    })
+
+    const guild = await client.guilds.fetch(process.env.DISCORD_SERVER_ID!).catch(error => {
+      console.error(`❌ [${requestId}] Guild fetch error:`, error)
+      throw new Error('Failed to fetch Discord guild')
+    })
+
+    // Get admin users first
+    const { data: adminUsers, error: adminError } = await supabase
+      .from('admin_users')
+      .select('wallet_address')
+
+    if (adminError) {
+      console.error(`❌ [${requestId}] Admin users error:`, adminError)
+      throw new Error('Failed to fetch admin users')
     }
 
-    console.log('🔄 Starting channel sync...')
-    const client = await getDiscordClient()
-    console.log('🔄 Got Discord client')
+    if (!adminUsers?.length) {
+      console.error(`❌ [${requestId}] No admin users found`)
+      throw new Error('No admin users configured')
+    }
 
-    const guild = await client.guilds.fetch(process.env.DISCORD_SERVER_ID!)
-    console.log('🔄 Got guild:', guild.name)
-    const channels = await guild.channels.fetch()
-    
     // Get all valid Discord text channel IDs
+    const channels = await guild.channels.fetch()
     const validChannelIds = new Set(
       Array.from(channels.values())
         .filter(c => c?.type === 0)
         .map(c => c!.id)
     )
     console.log('🔄 Valid Discord channel IDs:', Array.from(validChannelIds))
-    
-    // Get admin users
-    const { data: adminUsers } = await supabase
-      .from('admin_users')
-      .select('wallet_address')
-    console.log('🔄 Admin users:', adminUsers)
     
     // Get bot assignments for admin users
     const { data: adminAssignments } = await supabase
@@ -97,16 +97,22 @@ export async function POST() {
       .select('*')
     console.log('🔄 Final channel mappings:', finalMappings)
     
-    return NextResponse.json({ success: true })
+    console.log(`✅ [${requestId}] Sync completed successfully`)
+    return NextResponse.json({ success: true, requestId })
   } catch (error) {
-    // More detailed error logging
-    console.error('Error in channel sync:', {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error('Sync failed:', {
       error,
-      message: error instanceof Error ? error.message : 'Unknown error',
+      message: errorMessage,
       stack: error instanceof Error ? error.stack : undefined
     })
+    
     return NextResponse.json(
-      { error: 'Failed to sync channels', details: error instanceof Error ? error.message : 'Unknown error' },
+      { 
+        error: 'Failed to sync channels', 
+        details: errorMessage,
+        timestamp: new Date().toISOString()
+      }, 
       { status: 500 }
     )
   }

@@ -120,30 +120,40 @@ export function AdminPanel() {
 
   const handleUpdateChannelAccess = async (profileId: string) => {
     try {
-      // First delete existing mappings
-      await supabase
+      // First delete existing mappings for this profile
+      const { error: deleteError } = await supabase
         .from('channel_mappings')
         .delete()
         .eq('bot_assignment_id', profileId)
 
-      // Then insert new mappings
-      const mappings = Array.from(selectedChannels).map(channelId => ({
-        bot_assignment_id: profileId,
-        channel_id: channelId
-      }))
+      if (deleteError) {
+        console.error('Error deleting existing mappings:', deleteError)
+        throw deleteError
+      }
 
-      const { error } = await supabase
-        .from('channel_mappings')
-        .insert(mappings)
+      // Then insert new mappings if any channels are selected
+      if (selectedChannels.size > 0) {
+        const mappings = Array.from(selectedChannels).map(channelId => ({
+          bot_assignment_id: profileId,
+          channel_id: channelId
+        }))
 
-      if (error) throw error
-      
+        const { error: insertError } = await supabase
+          .from('channel_mappings')
+          .insert(mappings)
+
+        if (insertError) {
+          console.error('Error inserting new mappings:', insertError)
+          throw insertError
+        }
+      }
+
       setEditingProfile(null)
       fetchProfiles()  // Refresh to show updated channels
       alert('Channel access updated successfully')
     } catch (error) {
       console.error('Error updating channel access:', error)
-      alert('Failed to update channel access')
+      alert(`Failed to update channel access: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
