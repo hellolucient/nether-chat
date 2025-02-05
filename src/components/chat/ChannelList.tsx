@@ -64,7 +64,7 @@ export function ChannelList({ onSelectChannel }: Props) {
 
   const fetchChannels = async () => {
     try {
-      console.log('🔍 ChannelList: Fetching channels...')
+      console.log('🔍 ChannelList: Fetching channels...', publicKey?.toString())
       
       if (!publicKey) {
         console.log('No wallet connected, skipping channel fetch')
@@ -77,17 +77,15 @@ export function ChannelList({ onSelectChannel }: Props) {
         .from('bot_assignments')
         .select('*')
         .eq('wallet_address', publicKey.toString())
-        .single()
+        .maybeSingle()
 
       console.log('Bot assignment query result:', { assignment, assignmentError })
 
-      if (assignmentError) {
-        if (assignmentError.code === 'PGRST116') {
-          console.log('No bot assignment found for wallet:', publicKey.toString())
-          setChannels([])
-          return
-        }
-        throw assignmentError
+      // If no assignment found, return empty channels
+      if (!assignment) {
+        console.log('No bot assignment found for wallet:', publicKey.toString())
+        setChannels([])
+        return
       }
 
       // Get channel details from Discord
@@ -102,7 +100,7 @@ export function ChannelList({ onSelectChannel }: Props) {
       }
 
       // For regular users, filter by channel_access
-      const channelIds = assignment?.channel_access || []
+      const channelIds = assignment.channel_access || []
       console.log('Channel IDs for wallet:', channelIds)
 
       const accessibleChannels = allChannels.filter(
