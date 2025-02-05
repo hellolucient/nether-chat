@@ -25,16 +25,17 @@ export async function GET(
       )
     }
 
-    // Check channel access
-    const { data: botAssignment, error } = await supabase
+    // Check if user has access to this channel
+    const { data: assignment } = await supabase
       .from('bot_assignments')
       .select('channel_access')
       .eq('wallet_address', wallet)
       .single()
 
-    if (error || !botAssignment?.channel_access?.includes(channelId)) {
+    if (!assignment?.channel_access?.includes(channelId)) {
+      console.log('❌ No channel access for wallet:', wallet, 'channel:', channelId)
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'No access to this channel' }, 
         { status: 403 }
       )
     }

@@ -72,35 +72,28 @@ export function ChannelList({ onSelectChannel }: Props) {
         return
       }
 
-      // First get the bot assignment with channel mappings
+      // Get bot assignment for this wallet
       const { data: assignments, error: assignmentError } = await supabase
         .from('bot_assignments')
-        .select('*, channel_mappings(channel_id)')
+        .select('*')
         .eq('wallet_address', publicKey.toString())
         .single()
 
       console.log('Bot assignment query result:', { assignments, assignmentError })
 
-      if (assignmentError) {
-        if (assignmentError.code === 'PGRST116') {
-          console.log('No bot assignment found for wallet:', publicKey.toString())
-          setChannels([])
-          return
-        }
-        throw assignmentError
-      }
+      if (assignmentError) throw assignmentError
 
-      // Get Discord channels
-      const response = await fetch('/api/channels')
-      const { channels: allChannels } = await response.json()
-      
-      // Get channel IDs from mappings
-      const channelIds = assignments.channel_mappings?.map(m => m.channel_id) || []
+      // Get channel IDs from channel_access array
+      const channelIds = assignments?.channel_access || []
       console.log('Channel IDs for wallet:', channelIds)
 
-      // Filter channels
+      // Get channel details from Discord
+      const response = await fetch('/api/channels')
+      const { channels: allChannels } = await response.json()
+
+      // Filter channels based on access
       const accessibleChannels = allChannels.filter(
-        channel => channelIds.includes(channel.id)
+        (channel: any) => channelIds.includes(channel.id)
       )
       console.log('Accessible channels:', accessibleChannels)
 
