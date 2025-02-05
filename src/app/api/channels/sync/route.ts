@@ -67,7 +67,7 @@ export async function POST() {
     console.log('🔄 Fetching bot assignments...')
     const { data: assignments, error: assignmentError } = await supabase
       .from('bot_assignments')
-      .select('id, wallet_address, is_admin')
+      .select('id, wallet_address, is_admin, channel_access')
 
     if (assignmentError) {
       console.error('❌ Assignment fetch error:', {
@@ -94,7 +94,7 @@ export async function POST() {
           })
         }
       }
-      // Regular users get no channels by default - they need explicit assignment
+      // Regular users get channels from their channel_access array
     }
 
     console.log(`🔄 Creating ${newMappings.length} channel mappings...`)
