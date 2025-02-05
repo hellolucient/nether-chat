@@ -4,6 +4,11 @@ import { supabase } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
+interface ChannelMapping {
+  bot_assignment_id: string
+  channel_id: string
+}
+
 export async function POST() {
   try {
     // Get all channels from Discord
@@ -30,7 +35,7 @@ export async function POST() {
       .in('wallet_address', adminUsers?.map(u => u.wallet_address) || [])
     
     // Prepare new mappings for admin users
-    const newMappings = []
+    const newMappings: ChannelMapping[] = []
     
     for (const channel of channels.values()) {
       if (channel?.type === 0) { // Text channels only
