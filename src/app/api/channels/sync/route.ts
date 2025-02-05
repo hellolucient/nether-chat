@@ -11,9 +11,28 @@ interface ChannelMapping {
 
 export async function POST() {
   try {
+    // Verify environment variables first
+    if (!process.env.DISCORD_BOT_TOKEN) {
+      console.error('❌ Missing DISCORD_BOT_TOKEN')
+      return NextResponse.json(
+        { error: 'Discord bot token not configured' },
+        { status: 500 }
+      )
+    }
+    if (!process.env.DISCORD_SERVER_ID) {
+      console.error('❌ Missing DISCORD_SERVER_ID')
+      return NextResponse.json(
+        { error: 'Discord server ID not configured' },
+        { status: 500 }
+      )
+    }
+
     console.log('🔄 Starting channel sync...')
     const client = await getDiscordClient()
+    console.log('🔄 Got Discord client')
+
     const guild = await client.guilds.fetch(process.env.DISCORD_SERVER_ID!)
+    console.log('🔄 Got guild:', guild.name)
     const channels = await guild.channels.fetch()
     
     // Get all valid Discord text channel IDs
@@ -80,7 +99,15 @@ export async function POST() {
     
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error syncing channels:', error)
-    return NextResponse.json({ error: 'Failed to sync channels' }, { status: 500 })
+    // More detailed error logging
+    console.error('Error in channel sync:', {
+      error,
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    })
+    return NextResponse.json(
+      { error: 'Failed to sync channels', details: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    )
   }
 } 
