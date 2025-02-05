@@ -10,6 +10,7 @@ interface UserProfile {
   bot_token: string | null
   created_at?: string
   channels?: { channel_id: string }[]  // Add this for channel mappings
+  is_admin?: boolean  // Add this field
 }
 
 export function AdminPanel() {
@@ -62,18 +63,32 @@ export function AdminPanel() {
         .from('bot_assignments')
         .select(`
           *,
-          channels:channel_mappings(channel_id)
+          channels:channel_mappings(
+            id,
+            channel_id,
+            bot_assignment_id
+          )
         `)
         .order('created_at', { ascending: false })
-
-      console.log('Fetched profiles with channels:', data)
 
       if (error) {
         console.error('Supabase error:', error)
         throw error
       }
+
+      // Log the raw data
+      console.log('Raw profile data:', JSON.stringify(data, null, 2))
       
-      setProfiles(data || [])
+      // Clean up duplicates in memory before setting state
+      const cleanedData = data?.map(profile => ({
+        ...profile,
+        channels: profile.channels?.filter((c, i, arr) => 
+          arr.findIndex(ch => ch.channel_id === c.channel_id) === i
+        )
+      }))
+      
+      console.log('Cleaned profile data:', JSON.stringify(cleanedData, null, 2))
+      setProfiles(cleanedData || [])
     } catch (error) {
       console.error('Error in fetchProfiles:', error)
     } finally {
@@ -120,6 +135,9 @@ export function AdminPanel() {
 
   const handleUpdateChannelAccess = async (profileId: string) => {
     try {
+      console.log('🔄 Updating channels for profile:', profileId)
+      console.log('🔄 Selected channels:', Array.from(selectedChannels))
+
       // First delete existing mappings for this profile
       const { error: deleteError } = await supabase
         .from('channel_mappings')
@@ -130,6 +148,7 @@ export function AdminPanel() {
         console.error('Error deleting existing mappings:', deleteError)
         throw deleteError
       }
+      console.log('✅ Deleted old mappings')
 
       // Then insert new mappings if any channels are selected
       if (selectedChannels.size > 0) {
@@ -137,20 +156,22 @@ export function AdminPanel() {
           bot_assignment_id: profileId,
           channel_id: channelId
         }))
+        console.log('🔄 Adding new mappings:', mappings)
 
-        const { error: insertError } = await supabase
+        const { error: insertError, data } = await supabase
           .from('channel_mappings')
           .insert(mappings)
+          .select()
 
         if (insertError) {
           console.error('Error inserting new mappings:', insertError)
           throw insertError
         }
+        console.log('✅ Added new mappings:', data)
       }
 
       setEditingProfile(null)
-      fetchProfiles()  // Refresh to show updated channels
-      alert('Channel access updated successfully')
+      fetchProfiles()
     } catch (error) {
       console.error('Error updating channel access:', error)
       alert(`Failed to update channel access: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -416,6 +437,31 @@ export function AdminPanel() {
 
                 <div className="text-xs text-gray-500 mt-2">
                   Created: {new Date(profile.created_at || '').toLocaleDateString()}
+                </div>
+
+                <div className="flex items-center mt-2">
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={profile.is_admin}
+                      onChange={async (e) => {
+                        try {
+                          const { error } = await supabase
+                            .from('bot_assignments')
+                            .update({ is_admin: e.target.checked })
+                            .eq('id', profile.id)
+                          
+                          if (error) throw error
+                          fetchProfiles()
+                        } catch (error) {
+                          console.error('Error updating admin status:', error)
+                          alert('Failed to update admin status')
+                        }
+                      }}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm">Admin</span>
+                  </label>
                 </div>
               </div>
             ))
