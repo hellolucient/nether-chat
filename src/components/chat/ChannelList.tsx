@@ -73,25 +73,38 @@ export function ChannelList({ onSelectChannel }: Props) {
       }
 
       // Get bot assignment for this wallet
-      const { data: assignments, error: assignmentError } = await supabase
+      const { data: assignment, error: assignmentError } = await supabase
         .from('bot_assignments')
         .select('*')
         .eq('wallet_address', publicKey.toString())
         .single()
 
-      console.log('Bot assignment query result:', { assignments, assignmentError })
+      console.log('Bot assignment query result:', { assignment, assignmentError })
 
-      if (assignmentError) throw assignmentError
-
-      // Get channel IDs from channel_access array
-      const channelIds = assignments?.channel_access || []
-      console.log('Channel IDs for wallet:', channelIds)
+      if (assignmentError) {
+        if (assignmentError.code === 'PGRST116') {
+          console.log('No bot assignment found for wallet:', publicKey.toString())
+          setChannels([])
+          return
+        }
+        throw assignmentError
+      }
 
       // Get channel details from Discord
       const response = await fetch('/api/channels')
       const { channels: allChannels } = await response.json()
 
-      // Filter channels based on access
+      // If admin, show all channels
+      if (assignment.is_admin) {
+        console.log('Admin user - showing all channels')
+        setChannels(allChannels)
+        return
+      }
+
+      // For regular users, filter by channel_access
+      const channelIds = assignment?.channel_access || []
+      console.log('Channel IDs for wallet:', channelIds)
+
       const accessibleChannels = allChannels.filter(
         (channel: any) => channelIds.includes(channel.id)
       )
