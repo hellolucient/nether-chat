@@ -16,6 +16,11 @@ export async function GET() {
     const channels = await guild.channels.fetch()
     console.log('🔍 API: Got channels:', channels.size)
 
+    // Log all channels for debugging
+    channels.forEach(channel => {
+      console.log(`Channel: ${channel?.name} (${channel?.id}) - Type: ${channel?.type}`)
+    })
+
     const textChannels = channels
       .filter(channel => channel?.type === 0)  // 0 is GUILD_TEXT
       .map(channel => ({
@@ -24,7 +29,7 @@ export async function GET() {
       }))
 
     const result = Array.from(textChannels.values())
-    console.log('🔍 API: Returning channels:', result)
+    console.log('🔍 API: Valid text channels:', result)
 
     return NextResponse.json({ channels: result })
   } catch (error) {

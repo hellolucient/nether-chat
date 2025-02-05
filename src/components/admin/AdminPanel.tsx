@@ -331,8 +331,20 @@ export function AdminPanel() {
                 <div className="mt-2 text-sm text-gray-400">
                   Channels: {profile.channels?.length ? (
                     <>
-                      {profile.channels.map(c => allChannels[c.channel_id]).join(', ')}
-                      <span className="text-xs ml-1">({profile.channels.length} total)</span>
+                      {profile.channels
+                        .filter((c, i, arr) => 
+                          // Remove duplicates
+                          arr.findIndex(ch => ch.channel_id === c.channel_id) === i
+                        )
+                        .map(c => allChannels[c.channel_id])
+                        .filter(Boolean) // Remove undefined channels
+                        .join(', ')}
+                      <span className="text-xs ml-1">
+                        ({profile.channels
+                          .filter((c, i, arr) => 
+                            arr.findIndex(ch => ch.channel_id === c.channel_id) === i
+                          ).length} total)
+                      </span>
                     </>
                   ) : (
                     'No channels assigned'

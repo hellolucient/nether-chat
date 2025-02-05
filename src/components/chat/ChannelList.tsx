@@ -10,6 +10,14 @@ interface Channel {
   name: string
 }
 
+interface BotAssignment {
+  id: string
+  wallet_address: string
+  channel_mappings: {
+    channel_id: string
+  }[]
+}
+
 interface Props {
   onSelectChannel: (channelId: string) => void
 }
@@ -58,46 +66,39 @@ export function ChannelList({ onSelectChannel }: Props) {
     try {
       console.log('🔍 ChannelList: Fetching channels...')
       
-      // Guard against undefined publicKey
       if (!publicKey) {
         console.log('No wallet connected, skipping channel fetch')
         setChannels([])
         return
       }
 
-      const response = await fetch('/api/channels')
-      console.log('🔍 ChannelList: Got response:', response.status)
-      const data = await response.json()
-      console.log('🔍 ChannelList: Got data:', data)
-
-      // First get the bot assignment for this wallet
+      // First get the bot assignment with channel mappings
       const { data: assignments, error: assignmentError } = await supabase
         .from('bot_assignments')
-        .select(`
-          id,
-          channels:channel_mappings(channel_id)
-        `)
+        .select('*, channel_mappings(channel_id)')
         .eq('wallet_address', publicKey.toString())
         .single()
 
+      console.log('Bot assignment query result:', { assignments, assignmentError })
+
       if (assignmentError) {
         if (assignmentError.code === 'PGRST116') {
-          // No bot assignment found for this wallet
-          console.log('No bot assignment found for wallet')
+          console.log('No bot assignment found for wallet:', publicKey.toString())
           setChannels([])
           return
         }
         throw assignmentError
       }
 
-      // Get the channel IDs this user has access to
-      const channelIds = assignments?.channels?.map(c => c.channel_id) || []
+      // Get Discord channels
+      const response = await fetch('/api/channels')
+      const { channels: allChannels } = await response.json()
+      
+      // Get channel IDs from mappings
+      const channelIds = assignments.channel_mappings?.map(m => m.channel_id) || []
       console.log('Channel IDs for wallet:', channelIds)
 
-      const allChannels = data.channels || []
-      console.log('All available channels:', allChannels)
-
-      // Filter to only show channels the user has access to
+      // Filter channels
       const accessibleChannels = allChannels.filter(
         channel => channelIds.includes(channel.id)
       )
