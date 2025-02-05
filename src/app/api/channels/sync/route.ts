@@ -45,7 +45,7 @@ export async function POST() {
     console.log('🔄 Deleted mappings for non-existent channels')
     
     // Then add any new channels for admin users
-    const newMappings = []
+    const newMappings: ChannelMapping[] = []
     for (const channelId of validChannelIds) {
       for (const assignment of adminAssignments || []) {
         newMappings.push({
