@@ -51,6 +51,7 @@ export async function POST() {
     const { error: deleteError } = await supabase
       .from('channel_mappings')
       .delete()
+      .gte('created_at', '2000-01-01')
 
     if (deleteError) {
       console.error('❌ Delete error:', {
