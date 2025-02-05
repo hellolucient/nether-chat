@@ -51,7 +51,6 @@ export async function POST() {
     const { error: deleteError } = await supabase
       .from('channel_mappings')
       .delete()
-      .neq('id', 'dummy') // Delete all rows
 
     if (deleteError) {
       console.error('❌ Delete error:', {
