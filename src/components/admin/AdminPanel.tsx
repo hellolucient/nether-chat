@@ -24,7 +24,8 @@ export function AdminPanel() {
   const [newUserData, setNewUserData] = useState({
     username: '',
     wallet_address: '',
-    bot_token: ''
+    bot_token: '',
+    is_admin: false
   })
 
   useEffect(() => {
@@ -170,35 +171,37 @@ export function AdminPanel() {
   // Add handler for creating new user
   const handleCreateUser = async () => {
     try {
+      const newId = crypto.randomUUID() // Generate one UUID to use for both records
+
       // First create bot assignment
       const { data: assignment, error: assignmentError } = await supabase
         .from('bot_assignments')
         .insert({
+          id: newId, // Use the same UUID
           username: newUserData.username,
           wallet_address: newUserData.wallet_address,
-          bot_token: newUserData.bot_token || null
+          bot_token: newUserData.bot_token || null,
+          is_admin: newUserData.is_admin
         })
         .select()
         .single()
 
       if (assignmentError) throw assignmentError
 
-      // Then create channel mappings
-      if (newUserChannels.size > 0) {
-        const mappings = Array.from(newUserChannels).map(channelId => ({
-          bot_assignment_id: assignment.id,
-          channel_id: channelId
-        }))
+      // If admin, also create admin_user record with same UUID
+      if (newUserData.is_admin) {
+        const { error: adminError } = await supabase
+          .from('admin_users')
+          .insert({
+            id: newId, // Use the same UUID
+            wallet_address: newUserData.wallet_address
+          })
 
-        const { error: mappingError } = await supabase
-          .from('channel_mappings')
-          .insert(mappings)
-
-        if (mappingError) throw mappingError
+        if (adminError) throw adminError
       }
 
-      // Reset form and refresh profiles
-      setNewUserData({ username: '', wallet_address: '', bot_token: '' })
+      // Reset form and refresh
+      setNewUserData({ username: '', wallet_address: '', bot_token: '', is_admin: false })
       setNewUserChannels(new Set())
       fetchProfiles()
     } catch (error) {
@@ -239,6 +242,17 @@ export function AdminPanel() {
               value={newUserData.bot_token}
               onChange={e => setNewUserData(prev => ({ ...prev, bot_token: e.target.value }))}
             />
+          </div>
+          <div>
+            <label className="flex items-center space-x-2">
+              <input 
+                type="checkbox"
+                checked={newUserData.is_admin}
+                onChange={e => setNewUserData(prev => ({ ...prev, is_admin: e.target.checked }))}
+                className="rounded border-gray-300"
+              />
+              <span className="text-sm">Admin</span>
+            </label>
           </div>
         </div>
       </section>
