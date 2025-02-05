@@ -49,13 +49,6 @@ export function AdminPanel() {
     try {
       console.log('Starting to fetch profiles...')
       
-      // First check if we can connect to Supabase
-      const { data: testData, error: testError } = await supabase
-        .from('bot_assignments')
-        .select('count')
-      
-      console.log('Test query result:', { testData, testError })
-
       const { data, error } = await supabase
         .from('bot_assignments')
         .select(`
@@ -64,7 +57,7 @@ export function AdminPanel() {
         `)
         .order('created_at', { ascending: false })
 
-      console.log('Full query result:', { data, error })
+      console.log('Fetched profiles with channels:', data)
 
       if (error) {
         console.error('Supabase error:', error)
@@ -149,8 +142,11 @@ export function AdminPanel() {
     if (!editingProfile) return
     
     const profile = profiles.find(p => p.id === editingProfile)
+    console.log('Setting channels for profile:', profile)
     if (profile?.channels) {
-      setSelectedChannels(new Set(profile.channels.map(c => c.channel_id)))
+      const channelIds = profile.channels.map(c => c.channel_id)
+      console.log('Channel IDs to set:', channelIds)
+      setSelectedChannels(new Set(channelIds))
     }
   }, [editingProfile, profiles])
 
@@ -269,10 +265,14 @@ export function AdminPanel() {
                 
                 {/* Show current channel access */}
                 <div className="mt-2 text-sm text-gray-400">
-                  Channels: {profile.channels?.length ? 
-                    profile.channels.map(c => channelNames[c.channel_id]).join(', ') :
+                  Channels: {profile.channels?.length ? (
+                    <>
+                      {profile.channels.map(c => allChannels[c.channel_id]).join(', ')}
+                      <span className="text-xs ml-1">({profile.channels.length} total)</span>
+                    </>
+                  ) : (
                     'No channels assigned'
-                  }
+                  )}
                 </div>
 
                 {/* Edit mode */}
