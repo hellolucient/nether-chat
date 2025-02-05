@@ -18,10 +18,31 @@ export function AdminPanel() {
   const [loading, setLoading] = useState(true)
   const [editingProfile, setEditingProfile] = useState<string | null>(null)
   const [selectedChannels, setSelectedChannels] = useState<Set<string>>(new Set())
+  const [allChannels, setAllChannels] = useState<Record<string, string>>({})
 
   useEffect(() => {
     console.log('AdminPanel useEffect running...')
     fetchProfiles()
+  }, [])
+
+  const fetchServerChannels = async () => {
+    try {
+      const response = await fetch('/api/channels')
+      const { channels } = await response.json()
+      
+      const channelMap: Record<string, string> = {}
+      channels.forEach((channel: { id: string; name: string }) => {
+        channelMap[channel.id] = channel.name
+      })
+      
+      setAllChannels(channelMap)
+    } catch (error) {
+      console.error('Error fetching server channels:', error)
+    }
+  }
+
+  useEffect(() => {
+    fetchServerChannels()
   }, [])
 
   const fetchProfiles = async () => {
@@ -140,6 +161,21 @@ export function AdminPanel() {
     '1334725342652403783': '#alpha'
   }
 
+  // Add sync function
+  const syncChannels = async () => {
+    try {
+      const response = await fetch('/api/channels/sync', { method: 'POST' })
+      if (!response.ok) throw new Error('Failed to sync channels')
+      
+      // Refresh data after sync
+      await fetchServerChannels()
+      await fetchProfiles()
+    } catch (error) {
+      console.error('Error syncing channels:', error)
+      alert('Failed to sync channel mappings')
+    }
+  }
+
   return (
     <div className="space-y-8">
       {/* User Profiles Section */}
@@ -196,12 +232,20 @@ export function AdminPanel() {
       <section>
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold">Existing Profiles</h2>
-          <button 
-            onClick={fetchProfiles}
-            className="p-2 text-purple-300 hover:text-purple-400"
-          >
-            Refresh
-          </button>
+          <div className="flex space-x-2">
+            <button 
+              onClick={syncChannels}
+              className="p-2 text-blue-300 hover:text-blue-400"
+            >
+              Sync Channels
+            </button>
+            <button 
+              onClick={fetchProfiles}
+              className="p-2 text-purple-300 hover:text-purple-400"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
         <div className="space-y-4">
           {loading ? (
@@ -235,7 +279,7 @@ export function AdminPanel() {
                 {editingProfile === profile.id && (
                   <div className="mt-4 space-y-2">
                     <div className="grid grid-cols-3 gap-2">
-                      {Object.entries(channelNames).map(([id, name]) => (
+                      {Object.entries(allChannels).map(([id, name]) => (
                         <label key={id} className="flex items-center space-x-2 p-2 bg-[#1E1E24] rounded">
                           <input 
                             type="checkbox"
@@ -250,7 +294,7 @@ export function AdminPanel() {
                               setSelectedChannels(newChannels)
                             }}
                           />
-                          <span className="text-sm">{name}</span>
+                          <span className="text-sm">#{name}</span>
                         </label>
                       ))}
                     </div>
