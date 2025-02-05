@@ -1,10 +1,57 @@
 /* eslint-disable */
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+
+interface UserProfile {
+  id: string
+  wallet_address: string
+  bot_token: string | null
+  created_at?: string
+}
 
 export function AdminPanel() {
+  console.log('AdminPanel mounting...')
+  const [profiles, setProfiles] = useState<UserProfile[]>([])
+  const [loading, setLoading] = useState(true)
   const [selectedUser, setSelectedUser] = useState('')
+
+  useEffect(() => {
+    console.log('AdminPanel useEffect running...')
+    fetchProfiles()
+  }, [])
+
+  const fetchProfiles = async () => {
+    try {
+      console.log('Starting to fetch profiles...')
+      
+      // First check if we can connect to Supabase
+      const { data: testData, error: testError } = await supabase
+        .from('bot_assignments')
+        .select('count')
+      
+      console.log('Test query result:', { testData, testError })
+
+      const { data, error } = await supabase
+        .from('bot_assignments')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      console.log('Full query result:', { data, error })
+
+      if (error) {
+        console.error('Supabase error:', error)
+        throw error
+      }
+      
+      setProfiles(data || [])
+    } catch (error) {
+      console.error('Error in fetchProfiles:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleDisconnect = async () => {
     try {
@@ -79,12 +126,40 @@ export function AdminPanel() {
       <section>
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold">Existing Profiles</h2>
-          <button className="p-2 text-purple-300 hover:text-purple-400">
+          <button 
+            onClick={fetchProfiles}
+            className="p-2 text-purple-300 hover:text-purple-400"
+          >
             Refresh
           </button>
         </div>
         <div className="space-y-4">
-          {/* Profile cards would go here */}
+          {loading ? (
+            <div className="text-center py-4 text-gray-400">Loading profiles...</div>
+          ) : profiles.length > 0 ? (
+            profiles.map(profile => (
+              <div 
+                key={profile.id}
+                className="p-4 bg-[#262626] rounded-lg"
+              >
+                <div className="text-sm text-gray-400 break-all">
+                  Wallet: {profile.wallet_address}
+                </div>
+                <div className="mt-2 text-sm">
+                  {profile.bot_token ? (
+                    <span className="text-purple-300">Bot Connected</span>
+                  ) : (
+                    <span className="text-gray-400">No Bot Token</span>
+                  )}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  Created: {new Date(profile.created_at || '').toLocaleDateString()}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-4 text-gray-400">No profiles found</div>
+          )}
         </div>
       </section>
 
