@@ -9,13 +9,14 @@ interface UserProfile {
   wallet_address: string
   bot_token: string | null
   created_at?: string
+  channels?: { channel_id: string }[]  // Add this for channel mappings
 }
 
 export function AdminPanel() {
   console.log('AdminPanel mounting...')
   const [profiles, setProfiles] = useState<UserProfile[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedUser, setSelectedUser] = useState('')
+  const [editingProfile, setEditingProfile] = useState<string | null>(null)
   const [selectedChannels, setSelectedChannels] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -36,7 +37,10 @@ export function AdminPanel() {
 
       const { data, error } = await supabase
         .from('bot_assignments')
-        .select('*')
+        .select(`
+          *,
+          channels:channel_mappings(channel_id)
+        `)
         .order('created_at', { ascending: false })
 
       console.log('Full query result:', { data, error })
@@ -84,26 +88,24 @@ export function AdminPanel() {
       
       // Refresh profiles after delete
       fetchProfiles()
-      setSelectedUser('')
+      setEditingProfile(null)
     } catch (error) {
       console.error('Error deleting profile:', error)
       alert('Failed to delete profile')
     }
   }
 
-  const handleUpdateChannelAccess = async () => {
-    if (!selectedUser) return
-
+  const handleUpdateChannelAccess = async (profileId: string) => {
     try {
       // First delete existing mappings
       await supabase
         .from('channel_mappings')
         .delete()
-        .eq('bot_assignment_id', selectedUser)
+        .eq('bot_assignment_id', profileId)
 
       // Then insert new mappings
       const mappings = Array.from(selectedChannels).map(channelId => ({
-        bot_assignment_id: selectedUser,
+        bot_assignment_id: profileId,
         channel_id: channelId
       }))
 
@@ -112,6 +114,9 @@ export function AdminPanel() {
         .insert(mappings)
 
       if (error) throw error
+      
+      setEditingProfile(null)
+      fetchProfiles()  // Refresh to show updated channels
       alert('Channel access updated successfully')
     } catch (error) {
       console.error('Error updating channel access:', error)
@@ -120,24 +125,20 @@ export function AdminPanel() {
   }
 
   useEffect(() => {
-    if (!selectedUser) return
+    if (!editingProfile) return
     
-    const loadChannelAccess = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('channel_mappings')
-          .select('channel_id')
-          .eq('bot_assignment_id', selectedUser)
-
-        if (error) throw error
-        setSelectedChannels(new Set(data.map(m => m.channel_id)))
-      } catch (error) {
-        console.error('Error loading channel access:', error)
-      }
+    const profile = profiles.find(p => p.id === editingProfile)
+    if (profile?.channels) {
+      setSelectedChannels(new Set(profile.channels.map(c => c.channel_id)))
     }
+  }, [editingProfile, profiles])
 
-    loadChannelAccess()
-  }, [selectedUser])
+  // Channel names mapping
+  const channelNames: Record<string, string> = {
+    '1334725207360802881': '#general',
+    '1334725297794187318': '#gen-chat',
+    '1334725342652403783': '#alpha'
+  }
 
   return (
     <div className="space-y-8">
@@ -221,15 +222,75 @@ export function AdminPanel() {
                     <span className="text-gray-400">No Bot Token</span>
                   )}
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
+                
+                {/* Show current channel access */}
+                <div className="mt-2 text-sm text-gray-400">
+                  Channels: {profile.channels?.length ? 
+                    profile.channels.map(c => channelNames[c.channel_id]).join(', ') :
+                    'No channels assigned'
+                  }
+                </div>
+
+                {/* Edit mode */}
+                {editingProfile === profile.id && (
+                  <div className="mt-4 space-y-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      {Object.entries(channelNames).map(([id, name]) => (
+                        <label key={id} className="flex items-center space-x-2 p-2 bg-[#1E1E24] rounded">
+                          <input 
+                            type="checkbox"
+                            checked={selectedChannels.has(id)}
+                            onChange={(e) => {
+                              const newChannels = new Set(selectedChannels)
+                              if (e.target.checked) {
+                                newChannels.add(id)
+                              } else {
+                                newChannels.delete(id)
+                              }
+                              setSelectedChannels(newChannels)
+                            }}
+                          />
+                          <span className="text-sm">{name}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => handleUpdateChannelAccess(profile.id)}
+                        className="px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setEditingProfile(null)}
+                        className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 flex space-x-2">
+                  {editingProfile !== profile.id && (
+                    <button
+                      onClick={() => setEditingProfile(profile.id)}
+                      className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                    >
+                      Edit Channels
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleDeleteProfile(profile.id)}
+                    className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+                  >
+                    Delete
+                  </button>
+                </div>
+
+                <div className="text-xs text-gray-500 mt-2">
                   Created: {new Date(profile.created_at || '').toLocaleDateString()}
                 </div>
-                <button
-                  onClick={() => handleDeleteProfile(profile.id)}
-                  className="mt-2 px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
-                >
-                  Delete
-                </button>
               </div>
             ))
           ) : (
@@ -238,59 +299,7 @@ export function AdminPanel() {
         </div>
       </section>
 
-      {/* Server Channels Section */}
-      <section>
-        <h2 className="text-lg font-semibold mb-4">Server Channels</h2>
-        <div>
-          <label className="block text-sm mb-2">Select User</label>
-          <select 
-            className="w-full p-2 bg-[#262626] rounded"
-            value={selectedUser}
-            onChange={(e) => setSelectedUser(e.target.value)}
-          >
-            <option value="">Select a user...</option>
-            {profiles.map(profile => (
-              <option key={profile.id} value={profile.id}>
-                {profile.wallet_address}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {selectedUser && (
-          <>
-            <div className="mt-4 grid grid-cols-3 gap-4">
-              <div className="p-4 bg-[#262626] rounded">
-                <label className="flex items-center space-x-2">
-                  <input 
-                    type="checkbox"
-                    checked={selectedChannels.has('1334725207360802881')}
-                    onChange={(e) => {
-                      const newChannels = new Set(selectedChannels)
-                      if (e.target.checked) {
-                        newChannels.add('1334725207360802881')
-                      } else {
-                        newChannels.delete('1334725207360802881')
-                      }
-                      setSelectedChannels(newChannels)
-                    }}
-                  />
-                  <span>#general</span>
-                </label>
-                <div className="text-xs text-gray-400 mt-1">ID: 1334725207360802881</div>
-              </div>
-              {/* Repeat for other channels */}
-            </div>
-            <button 
-              onClick={handleUpdateChannelAccess}
-              className="w-full mt-4 p-3 bg-purple-600 text-white rounded hover:bg-purple-700"
-            >
-              Update Channel Access
-            </button>
-          </>
-        )}
-      </section>
-
+      {/* Admin controls at bottom */}
       <div className="w-64 border-l border-[#262626] p-4">
         <h2 className="font-semibold text-purple-300 mb-4">Admin Panel</h2>
         <button
