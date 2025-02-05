@@ -16,20 +16,13 @@ export async function POST() {
     const guild = await client.guilds.fetch(process.env.DISCORD_SERVER_ID!)
     const channels = await guild.channels.fetch()
     
-    console.log('🔄 Found Discord channels:', 
+    // Get all valid Discord text channel IDs
+    const validChannelIds = new Set(
       Array.from(channels.values())
-        .filter(c => c?.type === 0)
-        .map(c => ({ id: c!.id, name: c!.name }))
+        .filter(c => c?.type === 0)  // Text channels only
+        .map(c => c!.id)
     )
-    
-    // Get existing channel mappings
-    const { data: existingMappings } = await supabase
-      .from('channel_mappings')
-      .select('channel_id')
-    
-    console.log('🔄 Existing mappings:', existingMappings)
-    
-    const existingChannelIds = new Set(existingMappings?.map(m => m.channel_id))
+    console.log('🔄 Valid Discord channel IDs:', Array.from(validChannelIds))
     
     // Get admin users
     const { data: adminUsers } = await supabase
@@ -42,30 +35,37 @@ export async function POST() {
       .select('id')
       .in('wallet_address', adminUsers?.map(u => u.wallet_address) || [])
     
-    // Prepare new mappings for admin users
-    const newMappings: ChannelMapping[] = []
+    // First, delete any mappings for channels that no longer exist
+    const { error: deleteError } = await supabase
+      .from('channel_mappings')
+      .delete()
+      .not('channel_id', 'in', `(${Array.from(validChannelIds).join(',')})`)
     
-    for (const channel of channels.values()) {
-      if (channel?.type === 0) { // Text channels only
-        if (!existingChannelIds.has(channel.id)) {
-          // Add this channel for all admin users
-          for (const assignment of adminAssignments || []) {
-            newMappings.push({
-              bot_assignment_id: assignment.id,
-              channel_id: channel.id
-            })
-          }
-        }
+    if (deleteError) throw deleteError
+    console.log('🔄 Deleted mappings for non-existent channels')
+    
+    // Then add any new channels for admin users
+    const newMappings = []
+    for (const channelId of validChannelIds) {
+      for (const assignment of adminAssignments || []) {
+        newMappings.push({
+          bot_assignment_id: assignment.id,
+          channel_id: channelId
+        })
       }
     }
     
-    // Insert new mappings if any
     if (newMappings.length > 0) {
-      const { error } = await supabase
+      // Use upsert to avoid duplicates
+      const { error: upsertError } = await supabase
         .from('channel_mappings')
-        .insert(newMappings)
+        .upsert(newMappings, {
+          onConflict: 'bot_assignment_id,channel_id',
+          ignoreDuplicates: true
+        })
       
-      if (error) throw error
+      if (upsertError) throw upsertError
+      console.log('🔄 Added/updated mappings for current channels')
     }
     
     return NextResponse.json({ success: true })
