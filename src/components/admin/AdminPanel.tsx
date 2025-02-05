@@ -9,8 +9,8 @@ interface UserProfile {
   wallet_address: string
   bot_token: string | null
   created_at?: string
-  channels?: { channel_id: string }[]  // Add this for channel mappings
-  is_admin?: boolean  // Add this field
+  channel_access: string[]  // Array of channel IDs
+  is_admin?: boolean
 }
 
 export function AdminPanel() {
@@ -61,14 +61,7 @@ export function AdminPanel() {
       
       const { data, error } = await supabase
         .from('bot_assignments')
-        .select(`
-          *,
-          channels:channel_mappings(
-            id,
-            channel_id,
-            bot_assignment_id
-          )
-        `)
+        .select('*')
         .order('created_at', { ascending: false })
 
       if (error) {
@@ -76,19 +69,7 @@ export function AdminPanel() {
         throw error
       }
 
-      // Log the raw data
-      console.log('Raw profile data:', JSON.stringify(data, null, 2))
-      
-      // Clean up duplicates in memory before setting state
-      const cleanedData = data?.map(profile => ({
-        ...profile,
-        channels: profile.channels?.filter((c, i, arr) => 
-          arr.findIndex(ch => ch.channel_id === c.channel_id) === i
-        )
-      }))
-      
-      console.log('Cleaned profile data:', JSON.stringify(cleanedData, null, 2))
-      setProfiles(cleanedData || [])
+      setProfiles(data || [])
     } catch (error) {
       console.error('Error in fetchProfiles:', error)
     } finally {
@@ -138,36 +119,17 @@ export function AdminPanel() {
       console.log('🔄 Updating channels for profile:', profileId)
       console.log('🔄 Selected channels:', Array.from(selectedChannels))
 
-      // First delete existing mappings for this profile
-      const { error: deleteError } = await supabase
-        .from('channel_mappings')
-        .delete()
-        .eq('bot_assignment_id', profileId)
+      // Update the channel_access array in bot_assignments
+      const { error: updateError } = await supabase
+        .from('bot_assignments')
+        .update({ 
+          channel_access: Array.from(selectedChannels) 
+        })
+        .eq('id', profileId)
 
-      if (deleteError) {
-        console.error('Error deleting existing mappings:', deleteError)
-        throw deleteError
-      }
-      console.log('✅ Deleted old mappings')
-
-      // Then insert new mappings if any channels are selected
-      if (selectedChannels.size > 0) {
-        const mappings = Array.from(selectedChannels).map(channelId => ({
-          bot_assignment_id: profileId,
-          channel_id: channelId
-        }))
-        console.log('🔄 Adding new mappings:', mappings)
-
-        const { error: insertError, data } = await supabase
-          .from('channel_mappings')
-          .insert(mappings)
-          .select()
-
-        if (insertError) {
-          console.error('Error inserting new mappings:', insertError)
-          throw insertError
-        }
-        console.log('✅ Added new mappings:', data)
+      if (updateError) {
+        console.error('Error updating channel access:', updateError)
+        throw updateError
       }
 
       setEditingProfile(null)
@@ -183,8 +145,8 @@ export function AdminPanel() {
     
     const profile = profiles.find(p => p.id === editingProfile)
     console.log('Setting channels for profile:', profile)
-    if (profile?.channels) {
-      const channelIds = profile.channels.map(c => c.channel_id)
+    if (profile?.channel_access) {
+      const channelIds = profile.channel_access
       console.log('Channel IDs to set:', channelIds)
       setSelectedChannels(new Set(channelIds))
     }
@@ -356,20 +318,20 @@ export function AdminPanel() {
                 
                 {/* Show current channel access */}
                 <div className="mt-2 text-sm text-gray-400">
-                  Channels: {profile.channels?.length ? (
+                  Channels: {profile.channel_access?.length ? (
                     <>
-                      {profile.channels
+                      {profile.channel_access
                         .filter((c, i, arr) => 
                           // Remove duplicates
-                          arr.findIndex(ch => ch.channel_id === c.channel_id) === i
+                          arr.findIndex(ch => ch === c) === i
                         )
-                        .map(c => allChannels[c.channel_id])
+                        .map(c => allChannels[c])
                         .filter(Boolean) // Remove undefined channels
                         .join(', ')}
                       <span className="text-xs ml-1">
-                        ({profile.channels
+                        ({profile.channel_access
                           .filter((c, i, arr) => 
-                            arr.findIndex(ch => ch.channel_id === c.channel_id) === i
+                            arr.findIndex(ch => ch === c) === i
                           ).length} total)
                       </span>
                     </>
