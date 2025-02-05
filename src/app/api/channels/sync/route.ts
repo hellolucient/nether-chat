@@ -19,7 +19,7 @@ export async function POST() {
     // Get all valid Discord text channel IDs
     const validChannelIds = new Set(
       Array.from(channels.values())
-        .filter(c => c?.type === 0)  // Text channels only
+        .filter(c => c?.type === 0)
         .map(c => c!.id)
     )
     console.log('🔄 Valid Discord channel IDs:', Array.from(validChannelIds))
@@ -28,21 +28,24 @@ export async function POST() {
     const { data: adminUsers } = await supabase
       .from('admin_users')
       .select('wallet_address')
+    console.log('🔄 Admin users:', adminUsers)
     
     // Get bot assignments for admin users
     const { data: adminAssignments } = await supabase
       .from('bot_assignments')
       .select('id')
       .in('wallet_address', adminUsers?.map(u => u.wallet_address) || [])
+    console.log('🔄 Admin assignments:', adminAssignments)
     
     // First, delete any mappings for channels that no longer exist
-    const { error: deleteError } = await supabase
+    const { error: deleteError, count: deleteCount } = await supabase
       .from('channel_mappings')
       .delete()
       .not('channel_id', 'in', `(${Array.from(validChannelIds).join(',')})`)
+      .select('count')
     
     if (deleteError) throw deleteError
-    console.log('🔄 Deleted mappings for non-existent channels')
+    console.log('🔄 Deleted mappings:', deleteCount)
     
     // Then add any new channels for admin users
     const newMappings: ChannelMapping[] = []
@@ -54,19 +57,26 @@ export async function POST() {
         })
       }
     }
+    console.log('🔄 New mappings to add:', newMappings)
     
     if (newMappings.length > 0) {
-      // Use upsert to avoid duplicates
-      const { error: upsertError } = await supabase
+      const { error: upsertError, data: upsertData } = await supabase
         .from('channel_mappings')
         .upsert(newMappings, {
           onConflict: 'bot_assignment_id,channel_id',
           ignoreDuplicates: true
         })
+        .select()
       
       if (upsertError) throw upsertError
-      console.log('🔄 Added/updated mappings for current channels')
+      console.log('🔄 Added/updated mappings:', upsertData)
     }
+    
+    // Verify final mappings
+    const { data: finalMappings } = await supabase
+      .from('channel_mappings')
+      .select('*')
+    console.log('🔄 Final channel mappings:', finalMappings)
     
     return NextResponse.json({ success: true })
   } catch (error) {
