@@ -93,8 +93,19 @@ export async function POST() {
             created_at: new Date().toISOString()
           })
         }
+      } else {
+        // Regular users get channels from their channel_access array
+        for (const channelId of assignment.channel_access || []) {
+          if (validChannelIds.has(channelId)) {
+            newMappings.push({
+              id: crypto.randomUUID(),
+              bot_assignment_id: assignment.id,
+              channel_id: channelId,
+              created_at: new Date().toISOString()
+            })
+          }
+        }
       }
-      // Regular users get channels from their channel_access array
     }
 
     console.log(`🔄 Creating ${newMappings.length} channel mappings...`)
