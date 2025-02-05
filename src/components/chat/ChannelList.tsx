@@ -54,45 +54,64 @@ export function ChannelList({ onSelectChannel }: Props) {
     }
   }, [publicKey, markChannelAsUnread])
 
-  useEffect(() => {
-    async function fetchChannels() {
-      if (!publicKey) return
-
-      // First, check if user has any channel restrictions
-      const { data: botAssignment } = await supabase
+  const fetchChannels = async () => {
+    try {
+      console.log('🔍 ChannelList: Fetching channels...')
+      const response = await fetch('/api/channels')
+      console.log('🔍 ChannelList: Got response:', response.status)
+      const data = await response.json()
+      console.log('🔍 ChannelList: Got data:', data)
+      // First get the bot assignment for this wallet
+      const { data: assignments, error: assignmentError } = await supabase
         .from('bot_assignments')
-        .select('channel_access')
-        .eq('wallet_address', publicKey.toString())
+        .select(`
+          id,
+          channels:channel_mappings(channel_id)
+        `)
+        .eq('wallet_address', publicKey?.toString())
         .single()
 
-      // Fetch all channels
-      const response = await fetch('/api/channels')
-      const data = await response.json()
+      if (assignmentError) throw assignmentError
 
-      if (data.channels) {
-        // If user has restrictions, filter channels
-        if (botAssignment?.channel_access) {
-          const allowedChannels = data.channels.filter(
-            (channel: Channel) => botAssignment.channel_access.includes(channel.id)
-          )
-          setChannels(allowedChannels)
-          // Check unread status for all channels
-          await checkUnreadMessages(allowedChannels)
-        } else {
-          // If no bot assignment found, show no channels
-          setChannels([])
-        }
-      }
+      // Get the channel IDs this user has access to
+      const channelIds = assignments?.channels?.map(c => c.channel_id) || []
+
+      // Then fetch channel details from Discord
+      const allChannels = data.channels || []
+
+      // Filter to only show channels the user has access to
+      const accessibleChannels = allChannels.filter(
+        channel => channelIds.includes(channel.id)
+      )
+
+      setChannels(accessibleChannels)
+    } catch (error) {
+      console.error('Error fetching channels:', error)
     }
+  }
 
+  useEffect(() => {
     fetchChannels()
-  }, [publicKey, checkUnreadMessages])
+  }, [publicKey, fetchChannels])
 
   // Add real-time subscription
   useEffect(() => {
     if (!channels.length || !publicKey) return
     checkUnreadMessages(channels)
   }, [channels, publicKey, checkUnreadMessages])
+
+  const fetchUnreadStatus = async () => {
+    try {
+      const { data: lastViewed } = await supabase
+        .from('last_viewed')
+        .select('*')
+        .in('channel_id', channels.map(c => c.id))
+
+      // ... rest of unread logic ...
+    } catch (error) {
+      console.error('Error fetching unread status:', error)
+    }
+  }
 
   console.log('ChannelList render:', {
     channels: channels.map(c => c.id),

@@ -19,6 +19,12 @@ export function AdminPanel() {
   const [editingProfile, setEditingProfile] = useState<string | null>(null)
   const [selectedChannels, setSelectedChannels] = useState<Set<string>>(new Set())
   const [allChannels, setAllChannels] = useState<Record<string, string>>({})
+  const [newUserChannels, setNewUserChannels] = useState<Set<string>>(new Set())
+  const [newUserData, setNewUserData] = useState({
+    username: '',
+    wallet_address: '',
+    bot_token: ''
+  })
 
   useEffect(() => {
     console.log('AdminPanel useEffect running...')
@@ -172,23 +178,78 @@ export function AdminPanel() {
     }
   }
 
+  // Add handler for creating new user
+  const handleCreateUser = async () => {
+    try {
+      // First create bot assignment
+      const { data: assignment, error: assignmentError } = await supabase
+        .from('bot_assignments')
+        .insert({
+          username: newUserData.username,
+          wallet_address: newUserData.wallet_address,
+          bot_token: newUserData.bot_token || null
+        })
+        .select()
+        .single()
+
+      if (assignmentError) throw assignmentError
+
+      // Then create channel mappings
+      if (newUserChannels.size > 0) {
+        const mappings = Array.from(newUserChannels).map(channelId => ({
+          bot_assignment_id: assignment.id,
+          channel_id: channelId
+        }))
+
+        const { error: mappingError } = await supabase
+          .from('channel_mappings')
+          .insert(mappings)
+
+        if (mappingError) throw mappingError
+      }
+
+      // Reset form and refresh profiles
+      setNewUserData({ username: '', wallet_address: '', bot_token: '' })
+      setNewUserChannels(new Set())
+      fetchProfiles()
+    } catch (error) {
+      console.error('Error creating user:', error)
+      alert('Failed to create user')
+    }
+  }
+
   return (
     <div className="space-y-8">
       {/* User Profiles Section */}
       <section>
-        <h2 className="text-xl font-semibold mb-4">User Profiles</h2>
+        <h2 className="text-xl font-semibold mb-4">Create New User</h2>
         <div className="space-y-4">
           <div>
             <label className="block text-sm mb-2">User Name</label>
-            <input type="text" className="w-full p-2 bg-[#262626] rounded" />
+            <input 
+              type="text" 
+              className="w-full p-2 bg-[#262626] rounded"
+              value={newUserData.username}
+              onChange={e => setNewUserData(prev => ({ ...prev, username: e.target.value }))}
+            />
           </div>
           <div>
             <label className="block text-sm mb-2">Wallet Address</label>
-            <input type="text" className="w-full p-2 bg-[#262626] rounded" />
+            <input 
+              type="text" 
+              className="w-full p-2 bg-[#262626] rounded"
+              value={newUserData.wallet_address}
+              onChange={e => setNewUserData(prev => ({ ...prev, wallet_address: e.target.value }))}
+            />
           </div>
           <div>
-            <label className="block text-sm mb-2">Bot Token</label>
-            <input type="text" className="w-full p-2 bg-[#262626] rounded" />
+            <label className="block text-sm mb-2">Bot Token (Optional)</label>
+            <input 
+              type="text" 
+              className="w-full p-2 bg-[#262626] rounded"
+              value={newUserData.bot_token}
+              onChange={e => setNewUserData(prev => ({ ...prev, bot_token: e.target.value }))}
+            />
           </div>
         </div>
       </section>
@@ -197,29 +258,32 @@ export function AdminPanel() {
       <section>
         <h2 className="text-lg font-semibold mb-4">Channel Access</h2>
         <div className="grid grid-cols-3 gap-4">
-          <div className="p-4 bg-[#262626] rounded">
-            <label className="flex items-center space-x-2">
-              <input type="checkbox" />
-              <span>#general</span>
-            </label>
-            <div className="text-xs text-gray-400 mt-1">ID: 1334725207360802881</div>
-          </div>
-          <div className="p-4 bg-[#262626] rounded">
-            <label className="flex items-center space-x-2">
-              <input type="checkbox" />
-              <span>#gen-chat</span>
-            </label>
-            <div className="text-xs text-gray-400 mt-1">ID: 1334725297794187318</div>
-          </div>
-          <div className="p-4 bg-[#262626] rounded">
-            <label className="flex items-center space-x-2">
-              <input type="checkbox" />
-              <span>#alpha</span>
-            </label>
-            <div className="text-xs text-gray-400 mt-1">ID: 1334725342652403783</div>
-          </div>
+          {Object.entries(allChannels).map(([id, name]) => (
+            <div key={id} className="p-4 bg-[#262626] rounded">
+              <label className="flex items-center space-x-2">
+                <input 
+                  type="checkbox"
+                  checked={newUserChannels.has(id)}
+                  onChange={(e) => {
+                    const newChannels = new Set(newUserChannels)
+                    if (e.target.checked) {
+                      newChannels.add(id)
+                    } else {
+                      newChannels.delete(id)
+                    }
+                    setNewUserChannels(newChannels)
+                  }}
+                />
+                <span>#{name}</span>
+              </label>
+              <div className="text-xs text-gray-400 mt-1">ID: {id}</div>
+            </div>
+          ))}
         </div>
-        <button className="w-full mt-4 p-3 bg-purple-600 text-white rounded hover:bg-purple-700">
+        <button 
+          onClick={handleCreateUser}
+          className="w-full mt-4 p-3 bg-purple-600 text-white rounded hover:bg-purple-700"
+        >
           Create Bot Assignment
         </button>
       </section>
