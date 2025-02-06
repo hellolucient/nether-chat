@@ -1,34 +1,37 @@
+export interface Channel {
+  id: string
+  name: string
+  unread?: boolean
+}
+
 export interface Message {
   id: string
+  content: string
   author: {
     username: string
+    id: string
   }
-  content: string
   timestamp: string
-  attachments?: {
-    url: string
-    content_type?: string
-  }[]
-  embeds?: {
+  embeds?: Array<{
     type: string
     url?: string
-    thumbnail?: {
-      url: string
-    }
     image?: {
       url: string
     }
-  }[]
-  stickers?: {
+  }>
+  sticker_items?: Array<{
     id: string
     name: string
+  }>
+  stickers?: Array<{
     url: string
-  }[]
-  sticker_items?: {
-    id: string
-    name?: string
-    format_type: number
-  }[]
+    name: string
+  }>
+  attachments?: Array<{
+    url: string
+    content_type?: string
+    filename: string
+  }>
 }
 
 export interface MessageListProps {

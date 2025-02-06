@@ -243,7 +243,8 @@ export async function getChannelMessages(channelId: string): Promise<AppMessage[
       timestamp: msg.createdAt.toISOString(),
       attachments: Array.from(msg.attachments.values()).map(a => ({
         url: a.url,
-        content_type: a.contentType || undefined
+        content_type: a.contentType || undefined,
+        filename: a.name || 'untitled'
       })),
       embeds: msg.embeds.map(e => ({
         type: e.data.type || 'rich',
