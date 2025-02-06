@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getDiscordClient } from '@/lib/discord'
 import { supabase } from '@/lib/supabase'
 import crypto from 'crypto'
+import { TextChannel } from 'discord.js'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,6 +11,29 @@ interface ChannelMapping {
   bot_assignment_id: string
   channel_id: string
   created_at: string
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const client = await getDiscordClient()
+    const guild = await client.guilds.fetch(process.env.DISCORD_GUILD_ID!)
+    const channels = await guild.channels.fetch()
+
+    const textChannels = channels
+      .filter(channel => channel?.type === 0) // 0 is GUILD_TEXT
+      .map(channel => ({
+        id: channel!.id,
+        name: (channel as TextChannel).name
+      }))
+
+    return NextResponse.json(textChannels)
+  } catch (error) {
+    console.error('Failed to sync channels:', error)
+    return NextResponse.json(
+      { error: 'Failed to sync channels' },
+      { status: 500 }
+    )
+  }
 }
 
 export async function POST() {

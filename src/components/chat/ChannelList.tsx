@@ -26,6 +26,7 @@ export function ChannelList({ onSelectChannel }: Props) {
   const { unreadChannels, markChannelAsUnread } = useUnread()
   const { publicKey } = useWallet()
   const [channels, setChannels] = useState<Channel[]>([])
+  const [loading, setLoading] = useState(true)
 
   const checkUnreadMessages = useCallback(async (channels: Channel[]) => {
     if (!publicKey) return
@@ -64,6 +65,7 @@ export function ChannelList({ onSelectChannel }: Props) {
 
   const fetchChannels = async () => {
     try {
+      setLoading(true)
       console.log('🔍 ChannelList: Fetching channels...', publicKey?.toString())
       
       if (!publicKey) {
@@ -112,6 +114,8 @@ export function ChannelList({ onSelectChannel }: Props) {
     } catch (error) {
       console.error('Error fetching channels:', error)
       setChannels([])
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -147,19 +151,25 @@ export function ChannelList({ onSelectChannel }: Props) {
 
   return (
     <div className="flex flex-col space-y-2 w-full">
-      {channels.map(channel => (
-        <div key={channel.id} className="w-full">
-          <button
-            onClick={() => onSelectChannel(channel.id)}
-            className="w-full text-left p-2 hover:bg-[#262626] rounded-md flex items-center"
-          >
-            <span className="flex-grow">{channel.name}</span>
-            {unreadChannels.has(channel.id) && (
-              <span className="w-2 h-2 bg-blue-500 rounded-full" />
-            )}
-          </button>
+      {loading ? (
+        <div className="flex justify-center p-4">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-500" />
         </div>
-      ))}
+      ) : (
+        channels.map(channel => (
+          <div key={channel.id} className="w-full">
+            <button
+              onClick={() => onSelectChannel(channel.id)}
+              className="w-full text-left p-2 hover:bg-[#262626] rounded-md flex items-center"
+            >
+              <span className="flex-grow">{channel.name}</span>
+              {unreadChannels.has(channel.id) && (
+                <span className="w-2 h-2 bg-blue-500 rounded-full" />
+              )}
+            </button>
+          </div>
+        ))
+      )}
     </div>
   )
 } 

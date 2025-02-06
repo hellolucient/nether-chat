@@ -33,6 +33,8 @@ interface TextMessage {
 
 type MessageContent = string | ImageMessage | TextMessage
 
+const clientCache = new Map<string, Client>()
+
 export async function initializeDiscordBot() {
   try {
     if (!client) {
@@ -54,140 +56,48 @@ export async function initializeDiscordBot() {
 
 export { client }
 
-export async function getDiscordClient() {
-  // Add retries for client initialization
-  let attempts = 0;
-  const maxAttempts = 3;
-
-  while (attempts < maxAttempts) {
-    try {
-      if (client?.isReady()) {
-        console.log('✅ Discord: Returning existing ready client')
-        return client
-      }
-
-      console.log('🔄 Discord: Creating new client...')
-      client = new Client({
-        intents: [
-          GatewayIntentBits.Guilds,
-          GatewayIntentBits.GuildMessages,
-          GatewayIntentBits.MessageContent,
-          GatewayIntentBits.DirectMessages,
-          GatewayIntentBits.GuildMembers,
-          GatewayIntentBits.GuildMessageReactions,
-        ],
-      });
-      
-      // Handle disconnections
-      client.on('shardDisconnect', (event, shardId) => {
-        console.log('Discord shard disconnected:', { shardId, event })
-        client = null // Force new connection on next request
-      })
-
-      client.on('shardReconnecting', (id) => {
-        console.log('Discord shard reconnecting:', id)
-      })
-
-      client.on('shardResume', (id, replayedEvents) => {
-        console.log('Discord shard resumed:', { id, replayedEvents })
-      })
-
-      await client.login(process.env.DISCORD_BOT_TOKEN);
-      
-      // Wait for client to be ready
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('Discord client ready timeout'))
-        }, 5000)
-
-        // Store client reference since we know it's not null here
-        const currentClient = client
-        if (!currentClient) {
-          clearTimeout(timeout)
-          reject(new Error('Client is null'))
-          return
-        }
-
-        currentClient.once('ready', () => {
-          clearTimeout(timeout)
-          
-          // Set up event handlers
-          currentClient.on('messageCreate', async (message: Message) => {
-            try {
-              // Ignore messages from the bot itself
-              if (message.author.id === currentClient.user?.id) return
-
-              console.log('📨 Discord: New message received:', {
-                channelId: message.channelId,
-                author: message.author.username
-              })
-
-              // Check if message.content is an object (image or text message)
-              const content = message.content as MessageContent
-              let finalContent: string
-
-              if (typeof content === 'object' && 'type' in content) {
-                if (content.type === 'image') {
-                  console.log('📸 Discord: Sending image message')
-                  await sendMessage(message.channelId, content.content || '', {
-                    embeds: [{
-                      image: {
-                        url: content.url
-                      }
-                    }],
-                    messageReference: content.reply?.messageReference
-                  })
-                  finalContent = `__IMAGE__${content.url}`
-                } else {
-                  finalContent = content.content
-                }
-              } else {
-                finalContent = content
-              }
-
-              // Store the message in Supabase
-              const { error } = await supabase
-                .from('messages')
-                .insert({
-                  id: message.id,
-                  channel_id: message.channelId,
-                  sender_id: message.author.id,
-                  content: finalContent,
-                  sent_at: message.createdAt.toISOString()
-                })
-
-              if (error) {
-                console.error('❌ Discord: Error storing message in Supabase:', error)
-              } else {
-                console.log('✅ Discord: Message stored in Supabase')
-                
-                // Run cleanup after successfully storing a new message
-                await cleanupOldMessages()
-              }
-
-            } catch (error) {
-              console.error('❌ Discord: Error handling new message:', error)
-            }
-          })
-          
-          resolve(true)
-        })
-      })
-
-      console.log('✅ Discord: Client ready')
-
-      return client
-    } catch (error) {
-      console.error(`❌ Discord: Client init attempt ${attempts + 1} failed:`, error)
-      attempts++
-      if (attempts === maxAttempts) {
-        throw error
-      }
-      await new Promise(resolve => setTimeout(resolve, 1000 * attempts))
-    }
+export async function getDiscordClient(walletAddress?: string): Promise<Client> {
+  if (!walletAddress) {
+    // Fall back to default bot for non-authenticated actions
+    const client = new Client({
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+      ]
+    })
+    await client.login(process.env.DISCORD_BOT_TOKEN!)
+    return client
   }
 
-  throw new Error('Failed to initialize Discord client')
+  // Check cache first
+  if (clientCache.has(walletAddress)) {
+    return clientCache.get(walletAddress)!
+  }
+
+  // Get user's bot token
+  const { data: botData } = await supabase
+    .from('bot_tokens')
+    .select('bot_token')
+    .eq('wallet_address', walletAddress)
+    .single()
+
+  if (!botData?.bot_token) {
+    throw new Error('No bot token found for this wallet')
+  }
+
+  // Create new client
+  const client = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+    ]
+  })
+
+  await client.login(botData.bot_token)
+  clientCache.set(walletAddress, client)
+  return client
 }
 
 // Add a health check function

@@ -30,69 +30,100 @@ function formatMessageContent(content: string) {
   return <p className="text-gray-100">{formatDiscordMessage(content)}</p>
 }
 
-function MessageContent({ message }: { message: Message }) {
-  console.log('Rendering message content:', message)
-  const { content, attachments, embeds, stickers } = message
-
-  return (
-    <div className="mt-1">
-      {/* Regular text content */}
-      {content && <div className="mb-2">{formatMessageContent(content)}</div>}
-
-      {/* Attachments (direct uploads) */}
-      {attachments?.map((attachment, index) => {
-        if (attachment.content_type?.startsWith('image/')) {
-          return (
-            <div key={`attachment-${index}`} className="!w-[200px] !h-[200px] overflow-hidden">
-              <img 
-                src={attachment.url}
-                alt="Attachment"
-                className="!w-full !h-full !object-contain"
-                style={{ maxWidth: '200px', maxHeight: '200px' }}
-                loading="lazy"
-              />
-            </div>
-          )
-        }
-        return null
-      })}
-
-      {/* Stickers */}
-      {stickers?.map((sticker, index) => (
-        <div key={`sticker-${index}`} className="!w-[200px] !h-[200px] overflow-hidden">
-          <img
-            src={sticker.url}
-            alt={sticker.name}
-            className="!w-full !h-full !object-contain"
-            style={{ maxWidth: '200px', maxHeight: '200px' }}
-            loading="lazy"
-          />
+function formatMessageWithQuotes(content: string) {
+  const lines = content.split('\n')
+  return lines.map((line, index) => {
+    if (line.startsWith('> ')) {
+      return (
+        <div key={index} className="pl-2 border-l-2 border-gray-600 text-gray-400 mb-2">
+          {line.substring(2)} {/* Remove the '> ' prefix */}
         </div>
-      ))}
+      )
+    }
+    return <div key={index}>{line}</div>
+  })
+}
 
-      {/* Embeds (links, GIFs) */}
-      {embeds?.map((embed, index) => {
-        const imageUrl = embed.image?.url || embed.thumbnail?.url || embed.url
-        if (imageUrl && (
-          imageUrl.endsWith('.gif') || 
-          imageUrl.includes('tenor.com') || 
-          imageUrl.includes('giphy.com') ||
-          embed.type === 'image'
-        )) {
+function MessageContent({ message }: { message: Message }) {
+  console.log('Message content:', { 
+    message,
+    hasAttachments: !!message.attachments?.length,
+    attachments: message.attachments,
+    embeds: message.embeds,
+    content: message.content
+  })
+
+  // If message has attachments (images)
+  if (message.attachments?.length) {
+    return (
+      <div className="mt-1">
+        {message.attachments.map((attachment, index) => {
+          console.log('Rendering attachment:', attachment)
           return (
-            <div key={`embed-${index}`} className="!w-[200px] !h-[200px] overflow-hidden">
+            <div key={`attachment-${index}`} className="max-w-[300px]">
               <img 
-                src={imageUrl}
-                alt="Embedded content"
-                className="!w-full !h-full !object-contain"
-                style={{ maxWidth: '200px', maxHeight: '200px' }}
-                loading="lazy"
+                src={attachment.url} 
+                alt={attachment.filename || 'Attached image'}
+                className="rounded-lg"
               />
             </div>
           )
-        }
-        return null
-      })}
+        })}
+      </div>
+    )
+  }
+
+  // If it's a sticker message
+  if (message.sticker_items?.length) {
+    return (
+      <div className="mt-1">
+        {message.sticker_items.map((sticker, index) => (
+          <div key={`sticker-${index}`} className="max-w-[160px]">
+            <img
+              src={`https://media.discordapp.net/stickers/${sticker.id}.png`}
+              alt={sticker.name || 'Sticker'}
+              className="rounded-lg"
+            />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  // If the message has a GIF/image embed or sticker, show that
+  if (message.embeds?.some(embed => embed.type === 'gif' || embed.type === 'image') || message.stickers?.length) {
+    return (
+      <div className="mt-1">
+        {/* Handle embeds (GIFs/images) */}
+        {message.embeds?.map((embed, index) => (
+          <div key={`embed-${index}`} className="max-w-[300px]">
+            <img 
+              src={embed.url || embed.image?.url} 
+              alt="GIF" 
+              className="rounded-lg"
+            />
+          </div>
+        ))}
+
+        {/* Handle stickers */}
+        {message.stickers?.map((sticker, index) => (
+          <div key={`sticker-${index}`} className="max-w-[200px]">
+            <img
+              src={sticker.url}
+              alt={sticker.name}
+              className="rounded-lg"
+              style={{ maxWidth: '200px', maxHeight: '200px' }}
+            />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  // Otherwise show regular content
+  return (
+    <div className="text-gray-100 space-y-1">
+      {formatMessageWithQuotes(message.content)}
     </div>
   )
 }
@@ -102,29 +133,42 @@ interface MessageListProps {
   loading: boolean
   channelId: string
   onRefresh: () => Promise<void>
+  onReplyTo: (message: Message) => void
 }
 
-export function MessageList({ messages, loading, channelId, onRefresh }: MessageListProps) {
-  const [refreshing, setRefreshing] = useState(false)
+export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView()
+  const scrollToBottom = (behavior: 'auto' | 'smooth' = 'auto') => {
+    setTimeout(() => {
+      const messagesContainer = messagesEndRef.current?.parentElement
+      if (messagesContainer) {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight + 100
+      }
+    }, 100)
   }
 
-  // Scroll when messages change
+  // Keep and enhance the original effect
   useEffect(() => {
-    scrollToBottom()
-  }, [messages, channelId])
+    if (messages?.length > 0) {
+      scrollToBottom(isInitialLoad ? 'auto' : 'smooth')
+      if (isInitialLoad) {
+        setIsInitialLoad(false)
+      }
+    }
+  }, [messages, isInitialLoad])
+
+  // Reset initial load state when channel changes
+  useEffect(() => {
+    setIsInitialLoad(true)
+  }, [channelId])
 
   const handleRefresh = async () => {
     try {
-      setRefreshing(true)
       await onRefresh()
     } catch (error) {
       console.error('Failed to refresh messages:', error)
-    } finally {
-      setRefreshing(false)
     }
   }
 
@@ -141,7 +185,7 @@ export function MessageList({ messages, loading, channelId, onRefresh }: Message
     return <div className="p-4 text-center">Loading messages...</div>
   }
 
-  if (!messages?.length) {
+  if (!messages || messages.length === 0) {
     console.log('⚠️ MessageList: No messages to display')
     return (
       <div className="flex flex-col flex-1">
@@ -154,16 +198,9 @@ export function MessageList({ messages, loading, channelId, onRefresh }: Message
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="p-4 border-b border-[#262626] flex justify-between items-center">
+      {/* Header - simplified */}
+      <div className="p-4 border-b border-[#262626]">
         <h2 className="font-semibold text-purple-300">Messages</h2>
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className={`p-2 rounded-full hover:bg-[#262626] ${refreshing ? 'animate-spin' : ''}`}
-        >
-          <ArrowPathIcon className="h-5 w-5 text-purple-400" />
-        </button>
       </div>
 
       {/* Messages */}
@@ -177,8 +214,7 @@ export function MessageList({ messages, loading, channelId, onRefresh }: Message
         ) : (
           <div className="space-y-4">
             {messages.map((message) => (
-              <div key={message.id} className="flex gap-2">
-                {/* Message content */}
+              <div key={message.id} className="flex gap-2 group">
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-purple-300">
@@ -187,6 +223,12 @@ export function MessageList({ messages, loading, channelId, onRefresh }: Message
                     <span className="text-xs text-gray-400">
                       {new Date(message.timestamp).toLocaleString()}
                     </span>
+                    <button
+                      onClick={() => onReplyTo(message)}
+                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-purple-300 text-sm"
+                    >
+                      Reply
+                    </button>
                   </div>
                   <MessageContent message={message} />
                 </div>
@@ -194,6 +236,9 @@ export function MessageList({ messages, loading, channelId, onRefresh }: Message
             ))}
           </div>
         )}
+        
+        {/* Add this invisible div at the bottom */}
+        <div ref={messagesEndRef} />
       </div>
     </div>
   )

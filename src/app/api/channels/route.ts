@@ -21,17 +21,18 @@ export async function GET() {
       console.log(`Channel: ${channel?.name} (${channel?.id}) - Type: ${channel?.type}`)
     })
 
-    const textChannels = channels
-      .filter(channel => channel?.type === 0)  // 0 is GUILD_TEXT
+    // Filter for text channels and format them
+    const textChannels = Array.from(channels.values())
+      .filter(channel => channel?.type === 0) // 0 is text channel
       .map(channel => ({
-        id: channel!.id,
-        name: channel!.name
+        id: channel.id,
+        name: channel.name,
+        type: channel.type
       }))
 
-    const result = Array.from(textChannels.values())
-    console.log('🔍 API: Valid text channels:', result)
+    console.log('🔍 API: Valid text channels:', textChannels)
 
-    return NextResponse.json({ channels: result })
+    return NextResponse.json({ channels: textChannels })
   } catch (error) {
     console.error('❌ API Error:', error)
     return NextResponse.json({ error: 'Failed to fetch channels' }, { status: 500 })
