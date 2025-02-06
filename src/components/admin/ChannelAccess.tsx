@@ -8,7 +8,11 @@ type Channel = {
   name: string
 }
 
-export function ChannelAccess({ botAssignmentId }: { botAssignmentId: string }) {
+interface ChannelAccessProps {
+  botAssignmentId: string  // Required prop, no longer optional
+}
+
+export function ChannelAccess({ botAssignmentId }: ChannelAccessProps) {
   const [channels, setChannels] = useState<Channel[]>([])
   const [selectedChannels, setSelectedChannels] = useState<string[]>([])
   const [loading, setLoading] = useState(true)

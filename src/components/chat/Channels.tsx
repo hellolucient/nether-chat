@@ -1,6 +1,6 @@
 import { ArrowPathIcon } from '@heroicons/react/24/outline'
 import { useUnread } from '@/contexts/UnreadContext'
-import { Channel } from '@/types'
+import { Channel } from '@/types/types'
 
 interface ChannelsProps {
   channels: Channel[]

@@ -60,9 +60,15 @@ export function AdminPanel() {
 
       <div className="mt-6">
         {activeTab === 'channels' ? (
-          <ChannelAccess 
-            botAssignmentId={selectedAssignment || botAssignments[0]?.id || ''}
-          />
+          botAssignments.length > 0 ? (
+            <ChannelAccess 
+              botAssignmentId={selectedAssignment || botAssignments[0].id}
+            />
+          ) : (
+            <div className="text-center text-gray-400 py-4">
+              No bot assignments found. Please create a bot assignment first.
+            </div>
+          )
         ) : (
           <BotAssignment />
         )}
