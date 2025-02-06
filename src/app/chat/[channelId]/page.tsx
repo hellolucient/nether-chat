@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
-import { Message } from '@/types'
+import { Message as MessageType } from '@/types'
 import { ChatInput } from '@/components/chat/ChatInput'
-import Message from '@/components/Message'
+import { Message } from '@/components/Message'
 
 export default function ChatPage({ params }: { params: { channelId: string } }) {
   const { publicKey } = useWallet()
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<MessageType[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -44,10 +44,10 @@ export default function ChatPage({ params }: { params: { channelId: string } }) 
       )}
       <ChatInput 
         channelId={params.channelId}
-        onSendMessage={/* ... */}
-        replyTo={/* ... */}
-        onCancelReply={/* ... */}
-        onRefreshMessages={/* ... */}
+        onSendMessage={async () => {}}
+        replyTo={null}
+        onCancelReply={() => {}}
+        onRefreshMessages={async () => {}}
       />
     </div>
   )
