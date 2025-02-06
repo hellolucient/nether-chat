@@ -5,15 +5,12 @@ import { TextChannel } from 'discord.js'
 
 export async function GET(request: Request) {
   try {
-    // Get the wallet from the query params
-    const { searchParams } = new URL(request.url)
-    const wallet = searchParams.get('wallet')
-
+    const wallet = request.headers.get('x-wallet-address')
     if (!wallet) {
-      return NextResponse.json({ error: 'No wallet provided' }, { status: 400 })
+      return NextResponse.json({ error: 'No wallet address provided' }, { status: 400 })
     }
 
-    // Get user's channels
+    // Get user's channel access
     const { data: assignment } = await supabase
       .from('bot_assignments')
       .select('channel_access')
@@ -24,36 +21,43 @@ export async function GET(request: Request) {
       return NextResponse.json({ unreadChannels: [] })
     }
 
-    // Get last viewed timestamps for all channels
+    // Get last viewed times for all channels
     const { data: lastViewed } = await supabase
       .from('last_viewed')
       .select('channel_id, last_viewed')
       .eq('wallet_address', wallet)
 
+    // Create a map of channel IDs to last viewed times
     const lastViewedMap = new Map(
-      lastViewed?.map(lv => [lv.channel_id, new Date(lv.last_viewed)]) || []
+      lastViewed?.map(item => [item.channel_id, new Date(item.last_viewed)]) || []
     )
 
-    // Check each channel for new messages
-    const client = await getDiscordClient()
-    const unreadChannels = []
+    // Get latest message for each channel
+    const { data: latestMessages } = await supabase
+      .from('messages')
+      .select('channel_id, created_at')
+      .in('channel_id', assignment.channel_access)
+      .order('created_at', { ascending: false })
 
+    // Initialize array to store unread channel IDs
+    const unreadChannels: string[] = []  // Add explicit type here
+
+    // Check each channel for unread messages
     for (const channelId of assignment.channel_access) {
-      const channel = await client.channels.fetch(channelId)
-      if (!(channel instanceof TextChannel)) continue
-
       const lastViewedTime = lastViewedMap.get(channelId) || new Date(0)
-      const messages = await channel.messages.fetch({ limit: 1 })
-      const latestMessage = messages.first()
+      const latestMessage = latestMessages?.find(msg => msg.channel_id === channelId)
 
-      if (latestMessage && new Date(latestMessage.createdAt) > lastViewedTime) {
+      if (latestMessage && new Date(latestMessage.created_at) > lastViewedTime) {
         unreadChannels.push(channelId)
       }
     }
 
     return NextResponse.json({ unreadChannels })
   } catch (error) {
-    console.error('Failed to check unread channels:', error)
-    return NextResponse.json({ error: 'Failed to check unread channels' }, { status: 500 })
+    console.error('Error checking unread channels:', error)
+    return NextResponse.json(
+      { error: 'Failed to check unread channels' },
+      { status: 500 }
+    )
   }
 } 
