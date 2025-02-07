@@ -87,6 +87,16 @@ export async function GET(request: Request) {
       const lastViewedTime = lastViewedMap.get(channelId) || new Date(0)
       const latestMessage = messages?.find(msg => msg.channel_id === channelId)
       
+      console.log('🔍 Checking channel:', {
+        channelId,
+        lastViewed: lastViewedTime,
+        latestMessage: latestMessage ? {
+          id: latestMessage.id,
+          sent_at: latestMessage.sent_at,
+          isNewer: new Date(latestMessage.sent_at) > lastViewedTime
+        } : null
+      })
+      
       return latestMessage && new Date(latestMessage.sent_at) > lastViewedTime
     })
 
