@@ -51,6 +51,13 @@ export async function GET(
   req: NextRequest,
   context: Context
 ) {
+  const startTime = Date.now()
+  console.log('🚀 Starting message fetch:', {
+    channelId: context.params.channelId,
+    wallet: req.nextUrl.searchParams.get('wallet'),
+    url: req.url
+  })
+
   try {
     const { channelId } = context.params
     const wallet = req.nextUrl.searchParams.get('wallet')
@@ -191,7 +198,11 @@ export async function GET(
       lastViewed: lastViewed?.last_viewed 
     })
   } catch (error) {
-    console.error('Error in GET messages:', error)
+    console.error('❌ Error in message fetch:', {
+      error,
+      duration: Date.now() - startTime,
+      message: error instanceof Error ? error.message : 'Unknown error'
+    })
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
