@@ -275,9 +275,14 @@ export function BotAssignment() {
             <div className="flex justify-between items-start">
               <div>
                 <h4 className="font-medium text-purple-300">
-                  {user.bot_id ? bots.find(b => b.id === user.bot_id)?.bot_name || 'Unnamed Bot' : 'Unassigned'}
+                  {user.username}
                 </h4>
-                <p className="text-sm text-gray-400 mt-1">{user.wallet_address}</p>
+                <p className="text-sm text-gray-400 mt-1">
+                  {user.wallet_address}
+                </p>
+                <p className="text-sm text-gray-400">
+                  Bot: {bots.find(b => b.id === user.bot_id)?.bot_name || 'Unassigned'}
+                </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {(user.channel_access || []).map(channelId => {
                     const channel = channels.find(c => c.id === channelId)

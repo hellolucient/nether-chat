@@ -3,6 +3,7 @@
 import { ClientOnly } from '@/components/web3/ClientOnly'
 import { WalletConnect } from '@/components/web3/WalletConnect'
 import { AdminLink } from '@/components/web3/AdminLink'
+import { ProfileInfo } from '@/components/web3/ProfileInfo'
 
 export function Header() {
   return (
@@ -18,8 +19,9 @@ export function Header() {
         <h1 className="text-xl font-bold">Nether Chat</h1>
         <AdminLink />
       </div>
-      <div> {/* Wallet on right */}
+      <div className="flex items-center gap-4"> {/* Added gap between profile and wallet */}
         <ClientOnly>
+          <ProfileInfo />
           <WalletConnect />
         </ClientOnly>
       </div>
