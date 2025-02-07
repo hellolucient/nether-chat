@@ -177,17 +177,29 @@ export function BotAssignment() {
 
   const handleDelete = async (walletAddress: string) => {
     if (!confirm('Are you sure you want to delete this bot assignment?')) return
-
+    
     try {
-      const { error } = await supabase
-        .from('bot_tokens')
-        .delete()
-        .eq('wallet_address', walletAddress)
+      // Delete from both tables in parallel since there's no foreign key constraint
+      const [assignmentResult, tokenResult] = await Promise.all([
+        supabase
+          .from('bot_assignments')
+          .delete()
+          .eq('wallet_address', walletAddress),
+          
+        supabase
+          .from('bot_tokens')
+          .delete()
+          .eq('wallet_address', walletAddress)
+      ])
 
-      if (error) throw error
+      // Check for errors
+      if (assignmentResult.error) throw assignmentResult.error
+      if (tokenResult.error) throw tokenResult.error
 
+      // Update UI only after both deletes succeed
       setAssignments(prev => prev.filter(a => a.wallet_address !== walletAddress))
     } catch (error) {
+      console.error('Delete error:', error)
       alert('Failed to delete bot assignment: ' + (error instanceof Error ? error.message : 'Unknown error'))
     }
   }
