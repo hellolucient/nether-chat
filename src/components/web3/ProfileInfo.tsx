@@ -20,7 +20,8 @@ export function ProfileInfo() {
     if (!publicKey) return
 
     const fetchProfile = async () => {
-      const { data } = await supabase
+      console.log('Fetching profile for wallet:', publicKey.toString())
+      const { data, error } = await supabase
         .from('bot_assignments')
         .select(`
           username,
@@ -32,7 +33,11 @@ export function ProfileInfo() {
         .eq('wallet_address', publicKey.toString())
         .single()
 
+      console.log('Profile data:', data)
+      console.log('Error if any:', error)
+
       if (data) {
+        console.log('Discord bots data:', data.discord_bots)
         // Transform data to match our interface
         setProfile({
           username: data.username,
