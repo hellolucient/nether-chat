@@ -35,7 +35,8 @@ export function BotAssignment() {
     selectedChannels: [] as string[],
     isAdmin: false,
     botUsername: '',
-    botAvatarUrl: ''
+    botAvatarUrl: '',
+    botName: ''
   })
 
   // Fetch initial data
@@ -96,7 +97,8 @@ export function BotAssignment() {
             supabase
               .from('bot_tokens')
               .update({
-                bot_token: formData.botToken
+                bot_token: formData.botToken,
+                bot_name: formData.botName || formData.botUsername
               })
               .eq('wallet_address', editingUser) 
             : Promise.resolve()
@@ -123,7 +125,8 @@ export function BotAssignment() {
             .from('bot_tokens')
             .insert({
               wallet_address: formData.walletAddress,
-              bot_token: formData.botToken
+              bot_token: formData.botToken,
+              bot_name: formData.botName || formData.botUsername
             })
         ])
 
@@ -139,7 +142,8 @@ export function BotAssignment() {
         selectedChannels: [],
         isAdmin: false,
         botUsername: '',
-        botAvatarUrl: ''
+        botAvatarUrl: '',
+        botName: ''
       })
       setEditingUser(null)
       fetchUsers()
@@ -266,6 +270,18 @@ export function BotAssignment() {
               className="mt-1 block w-full px-3 py-2 bg-[#262626] rounded-md"
             />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300">Bot Name</label>
+            <input
+              type="text"
+              value={formData.botName}
+              onChange={(e) => setFormData(prev => ({...prev, botName: e.target.value}))}
+              className="mt-1 block w-full px-3 py-2 bg-[#262626] rounded-md"
+              required
+              placeholder="Name for the bot in Discord"
+            />
+          </div>
         </div>
 
         <div className="flex gap-4">
@@ -288,7 +304,8 @@ export function BotAssignment() {
                   selectedChannels: [],
                   isAdmin: false,
                   botUsername: '',
-                  botAvatarUrl: ''
+                  botAvatarUrl: '',
+                  botName: ''
                 })
               }}
               className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
@@ -332,7 +349,8 @@ export function BotAssignment() {
                       selectedChannels: user.channel_access || [],
                       isAdmin: user.is_admin || false,
                       botUsername: user.bot_username || '',
-                      botAvatarUrl: user.bot_avatar_url || ''
+                      botAvatarUrl: user.bot_avatar_url || '',
+                      botName: ''
                     })
                   }}
                   className="p-2 text-gray-400 hover:text-purple-300"
