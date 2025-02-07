@@ -46,6 +46,10 @@ function transformDiscordMessage(msg: DiscordMessage): Message {
   }
 }
 
+// Add export marker to ensure Next.js picks up the route
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 // GET handler for fetching messages
 export async function GET(
   req: NextRequest,
@@ -53,7 +57,8 @@ export async function GET(
 ) {
   console.log('🎯 [channelId] route handling request:', {
     url: req.url,
-    channelId: context.params.channelId
+    channelId: context.params.channelId,
+    time: new Date().toISOString()  // Add timestamp
   })
   const startTime = Date.now()
   console.log('🚀 Starting message fetch:', {
@@ -196,6 +201,20 @@ export async function GET(
       .eq('channel_id', channelId)
       .eq('wallet_address', wallet)
       .single()
+
+    // Check existing messages first
+    const { data: existingMessages } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('channel_id', channelId)
+      .order('sent_at', { ascending: false })
+      .limit(1)
+
+    console.log('📊 Existing messages in DB:', {
+      channelId,
+      latest: existingMessages?.[0],
+      count: existingMessages?.length
+    })
 
     return NextResponse.json({ 
       messages: messageArray,
