@@ -9,7 +9,7 @@ interface UserProfile {
   bot_id: string
   discord_bots: {
     bot_name: string
-  } | null  // Make it nullable since it's a join
+  } | null
 }
 
 export function ProfileInfo() {
@@ -26,7 +26,7 @@ export function ProfileInfo() {
         .select(`
           username,
           bot_id,
-          discord_bots:discord_bots (
+          discord_bots!inner (
             bot_name
           )
         `)
@@ -38,11 +38,10 @@ export function ProfileInfo() {
 
       if (data) {
         console.log('Discord bots data:', data.discord_bots)
-        // Transform data to match our interface
         setProfile({
           username: data.username,
           bot_id: data.bot_id,
-          discord_bots: data.discord_bots?.[0] || null
+          discord_bots: data.discord_bots[0] || null  // Access first item of array
         })
       }
     }
