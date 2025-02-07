@@ -158,3 +158,47 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+1. Go to Discord Developer Portal
+2. Click "New Application"
+3. Name it something like "Nether Chat Bot 2"
+4. Go to "Bot" section
+5. Click "Add Bot"
+6. Copy the token (you'll need this for admin panel)
+7. Under "Privileged Gateway Intents" enable:
+   - Message Content Intent
+   - Server Members Intent
+   - Presence Intent
+
+These intents are required because:
+- Message Content: Needed to read message content
+- Server Members: Required for @mentions and user search
+- Presence: Helps with user status and activity
+
+In OAuth2 -> URL Generator:
+1. Select Scopes:
+   - bot
+   - applications.commands
+
+2. Select Bot Permissions:
+   - Read Messages/View Channels
+   - Send Messages
+   - Send Messages in Threads
+   - Embed Links
+   - Attach Files
+   - Read Message History
+   - Use External Emojis
+   - Use External Stickers
+   - Add Reactions
+
+1. Copy the generated OAuth2 URL
+2. Open in browser
+3. Select your server
+4. Authorize
+
+1. Go to Nether Chat Admin Panel
+2. Click "Bot Assignment"
+3. Enter:
+   - Target Wallet (the user's wallet address)
+   - Bot Token (the one you copied in step 1)
+4. Click "Assign Bot"
