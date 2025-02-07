@@ -7,10 +7,12 @@ import { TrashIcon, PencilIcon } from '@heroicons/react/24/outline'
 
 interface User {
   id: string
-  name: string
   wallet_address: string
-  bot_token: string
+  created_at: string
+  bot_username: string | null
+  bot_avatar_url: string | null
   channel_access: string[]
+  username: string
   is_admin: boolean
 }
 
@@ -27,11 +29,13 @@ export function BotAssignment() {
   
   // Form state
   const [formData, setFormData] = useState({
-    name: '',
+    username: '',
     walletAddress: '',
     botToken: '',
     selectedChannels: [] as string[],
-    isAdmin: false
+    isAdmin: false,
+    botUsername: '',
+    botAvatarUrl: ''
   })
 
   // Fetch initial data
@@ -42,22 +46,22 @@ export function BotAssignment() {
 
   // Fetch users with their bot tokens and channel access
   const fetchUsers = async () => {
-    const { data, error } = await supabase
-      .from('bot_assignments')
-      .select(`
-        *,
-        bot_tokens (
-          bot_token,
-          bot_name
-        )
-      `)
-    
-    if (error) {
-      console.error('Error fetching users:', error)
-      return
-    }
+    try {
+      const { data, error } = await supabase
+        .from('bot_assignments')
+        .select('*')
+        .order('created_at', { ascending: false })
+      
+      if (error) {
+        console.error('Error fetching users:', error)
+        return
+      }
 
-    setUsers(data || [])
+      console.log('Fetched users:', data) // For debugging
+      setUsers(data || [])
+    } catch (error) {
+      console.error('Error in fetchUsers:', error)
+    }
   }
 
   // Fetch available channels
@@ -79,22 +83,27 @@ export function BotAssignment() {
           supabase
             .from('bot_assignments')
             .update({
-              name: formData.name,
+              username: formData.username,
+              bot_username: formData.botUsername,
+              bot_avatar_url: formData.botAvatarUrl,
               channel_access: formData.selectedChannels,
               is_admin: formData.isAdmin
             })
             .eq('wallet_address', editingUser),
           
-          supabase
-            .from('bot_tokens')
-            .update({
-              bot_token: formData.botToken
-            })
-            .eq('wallet_address', editingUser)
+          // Only update token if provided
+          formData.botToken ? 
+            supabase
+              .from('bot_tokens')
+              .update({
+                bot_token: formData.botToken
+              })
+              .eq('wallet_address', editingUser) 
+            : Promise.resolve()
         ])
 
         if (assignmentResult.error) throw assignmentResult.error
-        if (tokenResult.error) throw tokenResult.error
+        if (tokenResult?.error) throw tokenResult.error
 
       } else {
         // Create new user
@@ -103,7 +112,9 @@ export function BotAssignment() {
             .from('bot_assignments')
             .insert({
               wallet_address: formData.walletAddress,
-              name: formData.name,
+              username: formData.username,
+              bot_username: formData.botUsername,
+              bot_avatar_url: formData.botAvatarUrl,
               channel_access: formData.selectedChannels,
               is_admin: formData.isAdmin
             }),
@@ -122,11 +133,13 @@ export function BotAssignment() {
 
       // Reset form and refresh data
       setFormData({
-        name: '',
+        username: '',
         walletAddress: '',
         botToken: '',
         selectedChannels: [],
-        isAdmin: false
+        isAdmin: false,
+        botUsername: '',
+        botAvatarUrl: ''
       })
       setEditingUser(null)
       fetchUsers()
@@ -175,11 +188,11 @@ export function BotAssignment() {
         {/* Form fields */}
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-300">Name</label>
+            <label className="block text-sm font-medium text-gray-300">Username</label>
             <input
               type="text"
-              value={formData.name}
-              onChange={(e) => setFormData(prev => ({...prev, name: e.target.value}))}
+              value={formData.username}
+              onChange={(e) => setFormData(prev => ({...prev, username: e.target.value}))}
               className="mt-1 block w-full px-3 py-2 bg-[#262626] rounded-md"
               required
             />
@@ -233,6 +246,26 @@ export function BotAssignment() {
               ))}
             </div>
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300">Bot Username</label>
+            <input
+              type="text"
+              value={formData.botUsername}
+              onChange={(e) => setFormData(prev => ({...prev, botUsername: e.target.value}))}
+              className="mt-1 block w-full px-3 py-2 bg-[#262626] rounded-md"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300">Bot Avatar URL</label>
+            <input
+              type="text"
+              value={formData.botAvatarUrl}
+              onChange={(e) => setFormData(prev => ({...prev, botAvatarUrl: e.target.value}))}
+              className="mt-1 block w-full px-3 py-2 bg-[#262626] rounded-md"
+            />
+          </div>
         </div>
 
         <div className="flex gap-4">
@@ -249,11 +282,13 @@ export function BotAssignment() {
               onClick={() => {
                 setEditingUser(null)
                 setFormData({
-                  name: '',
+                  username: '',
                   walletAddress: '',
                   botToken: '',
                   selectedChannels: [],
-                  isAdmin: false
+                  isAdmin: false,
+                  botUsername: '',
+                  botAvatarUrl: ''
                 })
               }}
               className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
@@ -268,13 +303,15 @@ export function BotAssignment() {
       <div className="space-y-4">
         <h3 className="text-lg font-semibold text-purple-300">Existing Users</h3>
         {users.map(user => (
-          <div key={user.wallet_address} className="p-4 bg-[#1E1E24] rounded-lg">
+          <div key={user.id} className="p-4 bg-[#1E1E24] rounded-lg">
             <div className="flex justify-between items-start">
               <div>
-                <h4 className="font-medium text-purple-300">{user.name}</h4>
+                <h4 className="font-medium text-purple-300">
+                  {user.bot_username || 'Unnamed Bot'}
+                </h4>
                 <p className="text-sm text-gray-400 mt-1">{user.wallet_address}</p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {user.channel_access.map(channelId => {
+                  {(user.channel_access || []).map(channelId => {
                     const channel = channels.find(c => c.id === channelId)
                     return channel ? (
                       <span key={channelId} className="px-2 py-1 bg-[#262626] rounded text-sm">
@@ -289,11 +326,13 @@ export function BotAssignment() {
                   onClick={() => {
                     setEditingUser(user.wallet_address)
                     setFormData({
-                      name: user.name,
+                      username: user.username,
                       walletAddress: user.wallet_address,
                       botToken: '',
-                      selectedChannels: user.channel_access,
-                      isAdmin: user.is_admin
+                      selectedChannels: user.channel_access || [],
+                      isAdmin: user.is_admin || false,
+                      botUsername: user.bot_username || '',
+                      botAvatarUrl: user.bot_avatar_url || ''
                     })
                   }}
                   className="p-2 text-gray-400 hover:text-purple-300"
