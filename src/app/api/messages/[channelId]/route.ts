@@ -167,7 +167,10 @@ export async function GET(
 
     const { error: saveError, data: savedData } = await supabase
       .from('messages')
-      .upsert(messagesToUpsert, { onConflict: 'id' })
+      .upsert(messagesToUpsert, { 
+        onConflict: 'id',
+        ignoreDuplicates: false  // Add this to see conflicts
+      })
       .select()
 
     if (saveError) {
@@ -175,24 +178,25 @@ export async function GET(
         error: saveError,
         code: saveError.code,
         details: saveError.details,
-        message: saveError.message,
-        messagesToUpsert: messagesToUpsert.map(m => ({
-          id: m.id,
-          channel: m.channel_id,
-          sent_at: m.sent_at
-        }))
+        hint: saveError.hint,  // Add this for more error details
+        messagesToUpsert: messagesToUpsert.slice(0, 2)  // Show first two for debugging
       })
-    } else {
-      console.log('✅ Successfully saved messages:', {
-        count: savedData.length,
-        channelId,
-        messages: savedData.map(m => ({
-          id: m.id,
-          channel: m.channel_id,
-          sent_at: m.sent_at
-        }))
-      })
+      // Don't throw - still return messages even if save fails
     }
+
+    // Check what was actually saved
+    const { data: checkSaved } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('channel_id', channelId)
+      .order('sent_at', { ascending: false })
+      .limit(5)
+
+    console.log('📊 Messages in DB after save:', {
+      channelId,
+      saved: checkSaved?.length || 0,
+      latest: checkSaved?.[0]
+    })
 
     // Get last viewed time
     const { data: lastViewed } = await supabase
