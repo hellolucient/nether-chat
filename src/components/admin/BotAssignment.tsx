@@ -2,298 +2,314 @@
 
 import { useState, useEffect } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 import { supabase } from '@/lib/supabase'
+import { TrashIcon, PencilIcon } from '@heroicons/react/24/outline'
 
-interface BotAssignment {
+interface User {
+  id: string
+  name: string
   wallet_address: string
-  bot_token?: string
-  bot_name?: string
+  bot_token: string
   channel_access: string[]
-  is_admin: boolean  // This comes from bot_assignments table
+  is_admin: boolean
+}
+
+interface Channel {
+  id: string
+  name: string
 }
 
 export function BotAssignment() {
   const { publicKey } = useWallet()
-  const [assignments, setAssignments] = useState<BotAssignment[]>([])
-  const [newBotToken, setNewBotToken] = useState('')
-  const [targetWallet, setTargetWallet] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [editMode, setEditMode] = useState<string | null>(null)
-  const [editToken, setEditToken] = useState('')
+  const [users, setUsers] = useState<User[]>([])
+  const [channels, setChannels] = useState<Channel[]>([])
+  const [editingUser, setEditingUser] = useState<string | null>(null)
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    name: '',
+    walletAddress: '',
+    botToken: '',
+    selectedChannels: [] as string[],
+    isAdmin: false
+  })
 
-  // Move fetchAssignments to component scope
-  const fetchAssignments = async () => {
-    try {
-      // Get all assignments first
-      const { data: assignments } = await supabase
-        .from('bot_assignments')
-        .select('wallet_address, channel_access, is_admin')
-
-      // Get bot tokens
-      const { data: botTokens } = await supabase
-        .from('bot_tokens')
-        .select('*')
-      
-      // Combine the data
-      const combinedData = assignments?.map(assignment => ({
-        wallet_address: assignment.wallet_address,
-        channel_access: assignment.channel_access || [],
-        is_admin: assignment.is_admin,
-        bot_token: '',
-        bot_name: botTokens?.find(b => b.wallet_address === assignment.wallet_address)?.bot_name || 'No Bot Assigned',
-        ...botTokens?.find(b => b.wallet_address === assignment.wallet_address)
-      })) || []
-
-      setAssignments(combinedData)
-    } catch (error) {
-      console.error('Failed to fetch assignments:', error)
-    }
-  }
-
-  // Fetch existing assignments
+  // Fetch initial data
   useEffect(() => {
-    fetchAssignments()
+    fetchUsers()
+    fetchChannels()
   }, [])
 
+  // Fetch users with their bot tokens and channel access
+  const fetchUsers = async () => {
+    const { data, error } = await supabase
+      .from('bot_assignments')
+      .select(`
+        *,
+        bot_tokens (
+          bot_token,
+          bot_name
+        )
+      `)
+    
+    if (error) {
+      console.error('Error fetching users:', error)
+      return
+    }
+
+    setUsers(data || [])
+  }
+
+  // Fetch available channels
+  const fetchChannels = async () => {
+    const response = await fetch('/api/channels')
+    const data = await response.json()
+    setChannels(data.channels || [])
+  }
+
+  // Handle form submission (create/edit)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!publicKey || !newBotToken.trim() || !targetWallet.trim()) return
-
-    // Check if wallet already has a bot assigned
-    const existing = assignments.find(a => a.wallet_address === targetWallet.trim())
-    if (existing) {
-      const proceed = confirm('This wallet already has a bot assigned. Do you want to update it?')
-      if (!proceed) return
-    }
-
-    setLoading(true)
-    try {
-      const response = await fetch('/api/admin/assign-bot', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-admin-wallet': publicKey.toString()
-        },
-        body: JSON.stringify({
-          botToken: newBotToken.trim(),
-          walletAddress: targetWallet.trim(),
-          isAdmin: false
-        })
-      })
-
-      const data = await response.json()
-      if (data.success) {
-        alert(`Bot "${data.botName}" assigned successfully!`)
-        setNewBotToken('')
-        setTargetWallet('')
-        // Refresh assignments
-        fetchAssignments()
-      } else {
-        throw new Error(data.error)
-      }
-    } catch (error) {
-      alert('Failed to assign bot: ' + (error instanceof Error ? error.message : 'Unknown error'))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleEdit = async (walletAddress: string) => {
-    if (!publicKey || !editToken.trim()) return
+    if (!publicKey) return
 
     try {
-      console.log('📝 Starting token update...')
-
-      // Update both tables in parallel
-      const [assignmentResult, tokenResult] = await Promise.all([
-        // Update bot_assignments table
-        supabase
-          .from('bot_assignments')
-          .update({ 
-            updated_at: new Date().toISOString()
-          })
-          .eq('wallet_address', walletAddress),
-
-        // Update bot_tokens table
-        supabase
-          .from('bot_tokens')
-          .update({ 
-            bot_token: editToken.trim(),
-            updated_at: new Date().toISOString()
-          })
-          .eq('wallet_address', walletAddress)
-      ])
-
-      // Check for errors
-      if (assignmentResult.error) throw assignmentResult.error
-      if (tokenResult.error) throw tokenResult.error
-
-      // Clear edit state
-      setEditMode(null)
-      setEditToken('')
-      
-      // Refresh the assignments list
-      fetchAssignments()
-
-    } catch (error) {
-      console.error('❌ Edit error:', error)
-      alert('Failed to update bot token: ' + (error instanceof Error ? error.message : 'Unknown error'))
-    }
-  }
-
-  const handleDelete = async (walletAddress: string) => {
-    if (!confirm('Are you sure you want to delete this bot assignment?')) return
-    
-    try {
-      // Delete from both tables in parallel since there's no foreign key constraint
-      const [assignmentResult, tokenResult] = await Promise.all([
-        supabase
-          .from('bot_assignments')
-          .delete()
-          .eq('wallet_address', walletAddress),
+      if (editingUser) {
+        // Update existing user
+        const [assignmentResult, tokenResult] = await Promise.all([
+          supabase
+            .from('bot_assignments')
+            .update({
+              name: formData.name,
+              channel_access: formData.selectedChannels,
+              is_admin: formData.isAdmin
+            })
+            .eq('wallet_address', editingUser),
           
+          supabase
+            .from('bot_tokens')
+            .update({
+              bot_token: formData.botToken
+            })
+            .eq('wallet_address', editingUser)
+        ])
+
+        if (assignmentResult.error) throw assignmentResult.error
+        if (tokenResult.error) throw tokenResult.error
+
+      } else {
+        // Create new user
+        const [assignmentResult, tokenResult] = await Promise.all([
+          supabase
+            .from('bot_assignments')
+            .insert({
+              wallet_address: formData.walletAddress,
+              name: formData.name,
+              channel_access: formData.selectedChannels,
+              is_admin: formData.isAdmin
+            }),
+          
+          supabase
+            .from('bot_tokens')
+            .insert({
+              wallet_address: formData.walletAddress,
+              bot_token: formData.botToken
+            })
+        ])
+
+        if (assignmentResult.error) throw assignmentResult.error
+        if (tokenResult.error) throw tokenResult.error
+      }
+
+      // Reset form and refresh data
+      setFormData({
+        name: '',
+        walletAddress: '',
+        botToken: '',
+        selectedChannels: [],
+        isAdmin: false
+      })
+      setEditingUser(null)
+      fetchUsers()
+
+    } catch (error) {
+      console.error('Error saving user:', error)
+      alert('Failed to save user: ' + (error instanceof Error ? error.message : 'Unknown error'))
+    }
+  }
+
+  // Handle user deletion
+  const handleDelete = async (walletAddress: string) => {
+    if (!confirm('Are you sure you want to delete this user?')) return
+
+    try {
+      const [assignmentResult, tokenResult] = await Promise.all([
+        supabase
+          .from('bot_assignments')
+          .delete()
+          .eq('wallet_address', walletAddress),
+        
         supabase
           .from('bot_tokens')
           .delete()
           .eq('wallet_address', walletAddress)
       ])
 
-      // Check for errors
       if (assignmentResult.error) throw assignmentResult.error
       if (tokenResult.error) throw tokenResult.error
 
-      // Update UI only after both deletes succeed
-      setAssignments(prev => prev.filter(a => a.wallet_address !== walletAddress))
+      fetchUsers()
     } catch (error) {
-      console.error('Delete error:', error)
-      alert('Failed to delete bot assignment: ' + (error instanceof Error ? error.message : 'Unknown error'))
+      console.error('Error deleting user:', error)
+      alert('Failed to delete user: ' + (error instanceof Error ? error.message : 'Unknown error'))
     }
-  }
-
-  if (!publicKey) {
-    return (
-      <div className="text-center py-8 space-y-4">
-        <p className="text-gray-400">Please connect your wallet to manage bot assignments</p>
-        <WalletMultiButton className="!bg-purple-600 hover:!bg-purple-700" />
-      </div>
-    )
   }
 
   return (
     <div className="space-y-8">
-      {/* New Bot Assignment Form */}
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <h3 className="text-lg font-semibold text-purple-300">Assign New Bot</h3>
-        <div>
-          <label className="block text-sm font-medium text-gray-300">Target Wallet</label>
-          <input
-            type="text"
-            value={targetWallet}
-            onChange={(e) => setTargetWallet(e.target.value)}
-            className="mt-1 block w-full px-3 py-2 bg-[#1E1E24] border border-[#262626] rounded-md text-gray-100"
-            placeholder="Enter wallet address"
-          />
+      {/* Form Section */}
+      <form onSubmit={handleSubmit} className="space-y-4 bg-[#1E1E24] p-6 rounded-lg">
+        <h3 className="text-lg font-semibold text-purple-300">
+          {editingUser ? 'Edit User' : 'Create New User'}
+        </h3>
+
+        {/* Form fields */}
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300">Name</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData(prev => ({...prev, name: e.target.value}))}
+              className="mt-1 block w-full px-3 py-2 bg-[#262626] rounded-md"
+              required
+            />
+          </div>
+
+          {!editingUser && (
+            <div>
+              <label className="block text-sm font-medium text-gray-300">Wallet Address</label>
+              <input
+                type="text"
+                value={formData.walletAddress}
+                onChange={(e) => setFormData(prev => ({...prev, walletAddress: e.target.value}))}
+                className="mt-1 block w-full px-3 py-2 bg-[#262626] rounded-md"
+                required
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300">Bot Token</label>
+            <input
+              type="password"
+              value={formData.botToken}
+              onChange={(e) => setFormData(prev => ({...prev, botToken: e.target.value}))}
+              className="mt-1 block w-full px-3 py-2 bg-[#262626] rounded-md"
+              required={!editingUser}
+              placeholder={editingUser ? '(Leave blank to keep current token)' : ''}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Channel Access</label>
+            <div className="space-y-2 max-h-48 overflow-y-auto p-2 bg-[#262626] rounded-md">
+              {channels.map(channel => (
+                <label key={channel.id} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.selectedChannels.includes(channel.id)}
+                    onChange={(e) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        selectedChannels: e.target.checked 
+                          ? [...prev.selectedChannels, channel.id]
+                          : prev.selectedChannels.filter(id => id !== channel.id)
+                      }))
+                    }}
+                    className="rounded border-gray-600 text-purple-600"
+                  />
+                  <span className="text-gray-300">#{channel.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-300">Bot Token</label>
-          <input
-            type="password"
-            value={newBotToken}
-            onChange={(e) => setNewBotToken(e.target.value)}
-            className="mt-1 block w-full px-3 py-2 bg-[#1E1E24] border border-[#262626] rounded-md text-gray-100"
-            placeholder="Enter bot token"
-          />
+
+        <div className="flex gap-4">
+          <button
+            type="submit"
+            className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+          >
+            {editingUser ? 'Save Changes' : 'Create User'}
+          </button>
+          
+          {editingUser && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingUser(null)
+                setFormData({
+                  name: '',
+                  walletAddress: '',
+                  botToken: '',
+                  selectedChannels: [],
+                  isAdmin: false
+                })
+              }}
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+            >
+              Cancel
+            </button>
+          )}
         </div>
-        <button
-          type="submit"
-          disabled={loading || !newBotToken.trim() || !targetWallet.trim()}
-          className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
-        >
-          {loading ? 'Assigning...' : 'Assign Bot'}
-        </button>
       </form>
 
-      {/* Existing Assignments */}
+      {/* User List */}
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold text-purple-300">Existing Bot Assignments</h3>
-        <div className="space-y-4">
-          {assignments.map((assignment) => (
-            <div key={assignment.wallet_address} className="p-4 bg-[#1E1E24] rounded-lg">
-              <div className="flex justify-between items-start">
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-sm text-gray-400">Wallet</p>
-                    <p className="text-gray-100">{assignment.wallet_address}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400">Bot Name</p>
-                    <p className="text-gray-100">{assignment.bot_name}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400">Channel Access</p>
-                    <div className="flex flex-wrap gap-2 mt-1">
-                      {assignment.channel_access?.map(channelId => (
-                        <span 
-                          key={channelId}
-                          className="px-2 py-1 text-sm bg-[#262626] rounded"
-                        >
-                          {channelId}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleDelete(assignment.wallet_address)}
-                      className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
-                    >
-                      Delete
-                    </button>
-                    {editMode === assignment.wallet_address ? (
-                      <div className="flex-1 ml-4">
-                        <input
-                          type="password"
-                          value={editToken}
-                          onChange={(e) => setEditToken(e.target.value)}
-                          className="w-full px-3 py-2 bg-[#262626] border border-[#363640] rounded-md text-gray-100"
-                          placeholder="Enter new bot token"
-                        />
-                        <div className="flex gap-2 mt-2">
-                          <button
-                            onClick={() => handleEdit(assignment.wallet_address)}
-                            className="px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700"
-                          >
-                            Save
-                          </button>
-                          <button
-                            onClick={() => {
-                              setEditMode(null)
-                              setEditToken('')
-                            }}
-                            className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setEditMode(assignment.wallet_address)
-                          setEditToken('')
-                        }}
-                        className="px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700"
-                      >
-                        Edit Token
-                      </button>
-                    )}
-                  </div>
+        <h3 className="text-lg font-semibold text-purple-300">Existing Users</h3>
+        {users.map(user => (
+          <div key={user.wallet_address} className="p-4 bg-[#1E1E24] rounded-lg">
+            <div className="flex justify-between items-start">
+              <div>
+                <h4 className="font-medium text-purple-300">{user.name}</h4>
+                <p className="text-sm text-gray-400 mt-1">{user.wallet_address}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {user.channel_access.map(channelId => {
+                    const channel = channels.find(c => c.id === channelId)
+                    return channel ? (
+                      <span key={channelId} className="px-2 py-1 bg-[#262626] rounded text-sm">
+                        #{channel.name}
+                      </span>
+                    ) : null
+                  })}
                 </div>
               </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setEditingUser(user.wallet_address)
+                    setFormData({
+                      name: user.name,
+                      walletAddress: user.wallet_address,
+                      botToken: '',
+                      selectedChannels: user.channel_access,
+                      isAdmin: user.is_admin
+                    })
+                  }}
+                  className="p-2 text-gray-400 hover:text-purple-300"
+                >
+                  <PencilIcon className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={() => handleDelete(user.wallet_address)}
+                  className="p-2 text-gray-400 hover:text-red-400"
+                >
+                  <TrashIcon className="h-5 w-5" />
+                </button>
+              </div>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     </div>
   )

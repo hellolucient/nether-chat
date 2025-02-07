@@ -1,77 +1,28 @@
 /* eslint-disable */
 'use client'
 
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
-import { ChannelAccess } from './ChannelAccess'
 import { BotAssignment } from './BotAssignment'
-
-interface UserProfile {
-  wallet_address: string
-  channel_access: string[]
-  is_admin: boolean
-}
+import { useWallet } from '@solana/wallet-adapter-react'
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 
 export function AdminPanel() {
-  const [activeTab, setActiveTab] = useState<'channels' | 'bots'>('channels')
-  const [selectedAssignment, setSelectedAssignment] = useState<string | null>(null)
+  const { publicKey } = useWallet()
 
-  // Add state for bot assignments if needed
-  const [botAssignments, setBotAssignments] = useState<Array<{
-    id: string
-    wallet_address: string
-  }>>([])
-
-  // Fetch bot assignments when component mounts
-  useEffect(() => {
-    const fetchBotAssignments = async () => {
-      const { data } = await supabase
-        .from('bot_assignments')
-        .select('id, wallet_address')
-
-      if (data) {
-        setBotAssignments(data)
-      }
-    }
-
-    fetchBotAssignments()
-  }, [])
+  if (!publicKey) {
+    return (
+      <div className="p-8 text-center">
+        <h2 className="text-xl font-semibold text-purple-300 mb-4">
+          Connect Wallet to Access Admin Panel
+        </h2>
+        <WalletMultiButton />
+      </div>
+    )
+  }
 
   return (
-    <div className="p-6">
-      <div className="flex gap-4 border-b border-[#262626] mb-6">
-        <button
-          onClick={() => setActiveTab('channels')}
-          className={`px-4 py-2 ${
-            activeTab === 'channels' ? 'text-purple-300 border-b-2 border-purple-300' : 'text-gray-400'
-          }`}
-        >
-          Channel Access
-        </button>
-        <button
-          onClick={() => setActiveTab('bots')}
-          className={`px-4 py-2 ${
-            activeTab === 'bots' ? 'text-purple-300 border-b-2 border-purple-300' : 'text-gray-400'
-          }`}
-        >
-          Bot Assignment
-        </button>
-      </div>
-
-      <div className="mt-6">
-        {activeTab === 'channels' ? (
-          botAssignments.length > 0 ? (
-            <ChannelAccess 
-              botAssignmentId={selectedAssignment || botAssignments[0].id}
-            />
-          ) : (
-            <div className="text-center text-gray-400 py-4">
-              No bot assignments found. Please create a bot assignment first.
-            </div>
-          )
-        ) : (
-          <BotAssignment />
-        )}
+    <div className="max-w-4xl mx-auto p-6">
+      <div className="space-y-8">
+        <BotAssignment />
       </div>
     </div>
   )
