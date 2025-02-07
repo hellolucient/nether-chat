@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { Message } from '@/types'
+
+interface Message {
+  id: string
+  content: string
+  channelId: string
+  created_at: string
+}
 
 interface ChannelListProps {
   selectedChannel: string

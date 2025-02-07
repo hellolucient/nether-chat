@@ -7,6 +7,7 @@ export interface Channel {
 export interface Message {
   id: string
   content: string
+  channelId: string
   author: {
     username: string
     id: string
@@ -32,6 +33,7 @@ export interface Message {
     content_type?: string
     filename: string
   }>
+  created_at: string
 }
 
 export interface MessageListProps {

@@ -204,10 +204,10 @@ export async function getChannelMessages(channelId: string): Promise<AppMessage[
     }
 
     const channel = await client.channels.fetch(channelId) as TextChannel
-    const messages = await channel.messages.fetch({ limit: 50 })
+    const discordMessages = await channel.messages.fetch({ limit: 50 })
 
     // Store messages in Supabase
-    const messagesToUpsert = messages.map(msg => ({
+    const messagesToUpsert = Array.from(discordMessages.values()).map(msg => ({
       id: msg.id,
       channel_id: channelId,
       content: msg.content,
@@ -226,10 +226,11 @@ export async function getChannelMessages(channelId: string): Promise<AppMessage[
       console.error('Error storing messages:', error)
     }
 
-    // Return messages as before
-    return messages.map(msg => ({
+    // Transform Discord messages to our app format
+    const transformedMessages = Array.from(discordMessages.values()).map(msg => ({
       id: msg.id,
       content: msg.content,
+      channelId: msg.channelId,
       author: {
         id: msg.author.id,
         username: msg.author.username
@@ -247,13 +248,15 @@ export async function getChannelMessages(channelId: string): Promise<AppMessage[
         image: e.image ? { url: e.image.url } : undefined
       })),
       stickers: Array.from(msg.stickers.values()).map(s => ({
-        id: s.id,
-        name: s.name,
-        url: s.format === 3 ?
-          `https://cdn.discordapp.com/stickers/${s.id}.gif` :
-          `https://cdn.discordapp.com/stickers/${s.id}.png`
-      }))
-    })).reverse()
+        url: s.format === 3 
+          ? `https://cdn.discordapp.com/stickers/${s.id}.gif`
+          : `https://cdn.discordapp.com/stickers/${s.id}.png`,
+        name: s.name
+      })),
+      created_at: msg.createdAt.toISOString()
+    }))
+
+    return transformedMessages.reverse()
   } catch (error) {
     console.error('Error fetching messages:', error)
     throw error
