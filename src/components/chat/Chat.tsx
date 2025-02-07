@@ -32,40 +32,60 @@ export function Chat({ channelId }: ChatProps) {
   const checkAccess = useCallback(async () => {
     if (!publicKey) return
 
-    const { data } = await supabase
-      .from('bot_assignments')
-      .select('channel_access')
-      .eq('wallet_address', publicKey.toString())
-      .single()
+    try {
+      console.log('Checking access...')
+      const { data } = await supabase
+        .from('bot_assignments')
+        .select('channel_access')
+        .eq('wallet_address', publicKey.toString())
+        .single()
 
-    if (data?.channel_access?.includes(channelId)) {
-      setAuthorized(true)
-    } else {
+      if (data?.channel_access?.includes(channelId)) {
+        setAuthorized(true)
+      } else {
+        setAuthorized(false)
+      }
+    } catch (error) {
+      console.error('Error checking access:', error)
       setAuthorized(false)
     }
-    setLoading(false)
   }, [publicKey, channelId])
+
+  // Add debug logs
+  useEffect(() => {
+    console.log('Channel changed to:', channelId)
+    console.log('Loading state:', loading)
+  }, [channelId, loading])
 
   const fetchMessages = async () => {
     try {
-      setLoading(true)
-      const response = await fetch(`/api/messages/${channelId}?wallet=${publicKey}`)
-      const data = await response.json()
-      setMessages(data.messages)
-      setLoading(false)
+      console.log('Starting to fetch messages...')
+      setLoading(true)  // Set loading at start
+      
+      // Wait for both operations
+      await Promise.all([
+        checkAccess(),
+        (async () => {
+          const response = await fetch(`/api/messages/${channelId}?wallet=${publicKey}`)
+          const data = await response.json()
+          setMessages(data.messages)
+        })()
+      ])
+
+      console.log('Messages fetched successfully')
+      setLoading(false)  // Only set loading false after everything is done
     } catch (error) {
       console.error('Failed to fetch messages:', error)
       setLoading(false)
     }
   }
 
-  // Fetch messages and check access
+  // Update the effect to only call fetchMessages
   useEffect(() => {
     if (channelId && publicKey) {
       fetchMessages()
-      checkAccess()
     }
-  }, [channelId, publicKey, checkAccess])
+  }, [channelId, publicKey])
 
   // Mark channel as read when viewing
   useEffect(() => {
@@ -111,13 +131,35 @@ export function Chat({ channelId }: ChatProps) {
     }
   }
 
-  if (loading) return <div>Loading...</div>
-  
   if (!authorized) {
     return (
       <div className="flex-1 p-4">
         <div className="text-center text-red-400">
           You don&apos;t have access to this channel
+        </div>
+      </div>
+    )
+  }
+
+  if (loading) {
+    console.log('Rendering loading state...')
+    return (
+      <div className="h-full flex flex-col">
+        <div className="flex-1 min-h-0 flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <img 
+              src="/nether-world.png" 
+              alt="Loading" 
+              className="w-16 h-16 mx-auto animate-pulse"
+            />
+            <div className="text-2xl text-purple-300 animate-pulse">
+              Loading... chatter incoming
+            </div>
+          </div>
+        </div>
+        <div className="mt-auto border-t border-[#262626]">
+          {/* Empty div to maintain layout */}
+          <div className="h-[76px]"></div>
         </div>
       </div>
     )
