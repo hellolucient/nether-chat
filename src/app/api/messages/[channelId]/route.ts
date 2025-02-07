@@ -150,13 +150,22 @@ export async function GET(
         error: saveError,
         code: saveError.code,
         details: saveError.details,
-        message: saveError.message
+        message: saveError.message,
+        messagesToUpsert: messagesToUpsert.map(m => ({
+          id: m.id,
+          channel: m.channel_id,
+          sent_at: m.sent_at
+        }))
       })
     } else {
       console.log('✅ Successfully saved messages:', {
         count: savedData.length,
         channelId,
-        firstSavedId: savedData[0]?.id
+        messages: savedData.map(m => ({
+          id: m.id,
+          channel: m.channel_id,
+          sent_at: m.sent_at
+        }))
       })
     }
 
