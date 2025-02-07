@@ -117,58 +117,39 @@ export function BotAssignment() {
     if (!publicKey || !editToken.trim()) return
 
     try {
-      console.log('📝 Sending edit request:', {
-        walletAddress,
-        isAdmin: assignments.find(a => a.wallet_address === walletAddress)?.is_admin
-      })
+      console.log('📝 Starting token update...')
 
-      const response = await fetch('/api/admin/assign-bot', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-admin-wallet': publicKey.toString()
-        },
-        body: JSON.stringify({
-          botToken: editToken.trim(),
-          walletAddress,
-          isAdmin: assignments.find(a => a.wallet_address === walletAddress)?.is_admin || false
-        })
-      })
+      // Update both tables in parallel
+      const [assignmentResult, tokenResult] = await Promise.all([
+        // Update bot_assignments table
+        supabase
+          .from('bot_assignments')
+          .update({ 
+            updated_at: new Date().toISOString()
+          })
+          .eq('wallet_address', walletAddress),
 
-      const data = await response.json()
-      console.log('📥 Edit response:', data)
+        // Update bot_tokens table
+        supabase
+          .from('bot_tokens')
+          .update({ 
+            bot_token: editToken.trim(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('wallet_address', walletAddress)
+      ])
 
-      if (data.success) {
-        alert(`Bot token updated successfully!`)
-        setEditMode(null)
-        setEditToken('')
-        
-        // Refresh assignments with the updated data fetching
-        const fetchAssignments = async () => {
-          const { data: assignments } = await supabase
-            .from('bot_assignments')
-            .select('wallet_address, channel_access, is_admin')
+      // Check for errors
+      if (assignmentResult.error) throw assignmentResult.error
+      if (tokenResult.error) throw tokenResult.error
 
-          const { data: botTokens } = await supabase
-            .from('bot_tokens')
-            .select('*')
+      // Clear edit state
+      setEditMode(null)
+      setEditToken('')
+      
+      // Refresh the assignments list
+      fetchAssignments()
 
-          const combinedData = assignments?.map(assignment => ({
-            wallet_address: assignment.wallet_address,
-            channel_access: assignment.channel_access || [],
-            is_admin: assignment.is_admin,
-            bot_token: '',
-            bot_name: botTokens?.find(b => b.wallet_address === assignment.wallet_address)?.bot_name || 'No Bot Assigned',
-            ...botTokens?.find(b => b.wallet_address === assignment.wallet_address)
-          })) || []
-
-          setAssignments(combinedData)
-        }
-
-        fetchAssignments()
-      } else {
-        throw new Error(data.error)
-      }
     } catch (error) {
       console.error('❌ Edit error:', error)
       alert('Failed to update bot token: ' + (error instanceof Error ? error.message : 'Unknown error'))
