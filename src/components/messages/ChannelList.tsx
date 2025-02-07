@@ -17,15 +17,19 @@ export function ChannelList({ selectedChannel, onChannelSelect }: ChannelListPro
   const [unreadChannels, setUnreadChannels] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    const handleNewMessage = (message: Message) => {
-      if (message.channelId !== selectedChannel) {
-        setUnreadChannels(prev => new Set([...prev, message.channelId]))
+    const handleNewMessage = (payload: { new: Message }) => {
+      if (payload.new.channelId !== selectedChannel) {
+        setUnreadChannels(prev => new Set([...prev, payload.new.channelId]))
       }
     }
 
     supabase
       .channel('messages')
-      .on('INSERT', handleNewMessage)
+      .on(
+        'INSERT',
+        'public:messages',
+        handleNewMessage
+      )
       .subscribe()
 
     return () => {
