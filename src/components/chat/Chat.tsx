@@ -26,28 +26,27 @@ export function Chat({ channelId }: ChatProps) {
   const { markChannelAsRead, checkUnreadChannels } = useUnread()
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
-  const [authorized, setAuthorized] = useState(false)
+  const [authorized, setAuthorized] = useState(true)  // Start as true to prevent flash
+  const [checkingAccess, setCheckingAccess] = useState(true)  // New state
   const [replyTo, setReplyTo] = useState<Message | null>(null)
 
   const checkAccess = useCallback(async () => {
     if (!publicKey) return
-
+    
     try {
-      console.log('Checking access...')
+      setCheckingAccess(true)
       const { data } = await supabase
         .from('bot_assignments')
         .select('channel_access')
         .eq('wallet_address', publicKey.toString())
         .single()
 
-      if (data?.channel_access?.includes(channelId)) {
-        setAuthorized(true)
-      } else {
-        setAuthorized(false)
-      }
+      setAuthorized(data?.channel_access?.includes(channelId) ?? false)
     } catch (error) {
       console.error('Error checking access:', error)
       setAuthorized(false)
+    } finally {
+      setCheckingAccess(false)
     }
   }, [publicKey, channelId])
 
@@ -59,23 +58,48 @@ export function Chat({ channelId }: ChatProps) {
 
   const fetchMessages = async () => {
     try {
-      console.log('Starting to fetch messages...')
-      setLoading(true)  // Set loading at start
+      setLoading(true)
+      console.log('🔎 Attempting to fetch messages:', {
+        channelId,
+        wallet: publicKey?.toString()
+      })
       
-      // Wait for both operations
-      await Promise.all([
-        checkAccess(),
-        (async () => {
-          const response = await fetch(`/api/messages/${channelId}?wallet=${publicKey}`)
-          const data = await response.json()
-          setMessages(data.messages)
-        })()
-      ])
+      if (!publicKey) {
+        console.log('❌ No wallet connected, skipping fetch')
+        return
+      }
 
-      console.log('Messages fetched successfully')
-      setLoading(false)  // Only set loading false after everything is done
+      if (!channelId) {
+        console.log('❌ No channel ID, skipping fetch')
+        return
+      }
+
+      const url = `/api/messages/${channelId}?wallet=${publicKey}`
+      console.log('📡 Making request to:', url)
+
+      const response = await fetch(url)
+      console.log('📥 Got response:', {
+        status: response.status,
+        ok: response.ok
+      })
+
+      if (!response.ok) {
+        const text = await response.text()
+        console.error('❌ Message fetch failed:', {
+          status: response.status,
+          text
+        })
+        return
+      }
+
+      const data = await response.json()
+      console.log('✅ Got messages:', {
+        count: data.messages?.length
+      })
+      setMessages(data.messages)
     } catch (error) {
-      console.error('Failed to fetch messages:', error)
+      console.error('❌ Error in fetchMessages:', error)
+    } finally {
       setLoading(false)
     }
   }
@@ -137,16 +161,6 @@ export function Chat({ channelId }: ChatProps) {
     }
   }
 
-  if (!authorized) {
-    return (
-      <div className="flex-1 p-4">
-        <div className="text-center text-red-400">
-          You don&apos;t have access to this channel
-        </div>
-      </div>
-    )
-  }
-
   if (loading) {
     console.log('Rendering loading state...')
     return (
@@ -166,6 +180,16 @@ export function Chat({ channelId }: ChatProps) {
         <div className="mt-auto border-t border-[#262626]">
           {/* Empty div to maintain layout */}
           <div className="h-[76px]"></div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!checkingAccess && !authorized) {
+    return (
+      <div className="flex-1 p-4">
+        <div className="text-center text-red-400">
+          You don&apos;t have access to this channel
         </div>
       </div>
     )
