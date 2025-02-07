@@ -165,24 +165,30 @@ export async function GET(
       }
     })
 
+    // Add this right before the save
+    console.log('💾 Message save check:', {
+      messagesToSave: messagesToUpsert.length,
+      sample: messagesToUpsert[0],
+      table: 'messages',
+      operation: 'upsert'
+    })
+
     const { error: saveError, data: savedData } = await supabase
       .from('messages')
       .upsert(messagesToUpsert, { 
         onConflict: 'id',
-        ignoreDuplicates: false  // Add this to see conflicts
+        ignoreDuplicates: false
       })
       .select()
 
-    if (saveError) {
-      console.error('❌ Error saving messages:', {
-        error: saveError,
+    // And this after
+    console.log('📝 Save result:', {
+      error: saveError ? {
         code: saveError.code,
-        details: saveError.details,
-        hint: saveError.hint,  // Add this for more error details
-        messagesToUpsert: messagesToUpsert.slice(0, 2)  // Show first two for debugging
-      })
-      // Don't throw - still return messages even if save fails
-    }
+        message: saveError.message
+      } : null,
+      saved: savedData?.length || 0
+    })
 
     // Check what was actually saved
     const { data: checkSaved } = await supabase

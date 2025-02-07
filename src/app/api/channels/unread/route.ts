@@ -100,6 +100,17 @@ export async function GET(request: Request) {
       return latestMessage && new Date(latestMessage.sent_at) > lastViewedTime
     })
 
+    console.log('📊 Channel check details:', {
+      channelAccess: assignment.channel_access,
+      lastViewed: Object.fromEntries(lastViewedMap),
+      latestMessages: messages?.reduce((acc, msg) => {
+        if (!acc[msg.channel_id] || new Date(msg.sent_at) > new Date(acc[msg.channel_id])) {
+          acc[msg.channel_id] = msg.sent_at
+        }
+        return acc
+      }, {} as Record<string, string>)
+    })
+
     return NextResponse.json({ unreadChannels })
   } catch (error) {
     console.error('Error checking unread channels:', error)
