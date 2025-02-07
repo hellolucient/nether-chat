@@ -51,6 +51,10 @@ export async function GET(
   req: NextRequest,
   context: Context
 ) {
+  console.log('🎯 [channelId] route handling request:', {
+    url: req.url,
+    channelId: context.params.channelId
+  })
   const startTime = Date.now()
   console.log('🚀 Starting message fetch:', {
     channelId: context.params.channelId,
