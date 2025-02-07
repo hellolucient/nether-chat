@@ -1,23 +1,31 @@
 import React, { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
-import { Message } from '../../types/Message'
+import { supabase } from '@/lib/supabase'
+import type { Message } from '@/types'
 
-const [unreadChannels, setUnreadChannels] = useState<Set<string>>(new Set())
+interface ChannelListProps {
+  selectedChannel: string
+  onChannelSelect: (channelId: string) => void
+}
 
-// Add this back to mark channels as unread
-useEffect(() => {
-  const handleNewMessage = (message: Message) => {
-    if (message.channelId !== selectedChannel) {
-      setUnreadChannels(prev => new Set([...prev, message.channelId]))
+export function ChannelList({ selectedChannel, onChannelSelect }: ChannelListProps) {
+  const [unreadChannels, setUnreadChannels] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    const handleNewMessage = (message: Message) => {
+      if (message.channelId !== selectedChannel) {
+        setUnreadChannels(prev => new Set([...prev, message.channelId]))
+      }
     }
-  }
 
-  supabase
-    .channel('messages')
-    .on('INSERT', handleNewMessage)
-    .subscribe()
+    supabase
+      .channel('messages')
+      .on('INSERT', handleNewMessage)
+      .subscribe()
 
-  return () => {
-    supabase.channel('messages').unsubscribe()
-  }
-}, [selectedChannel]) 
+    return () => {
+      supabase.channel('messages').unsubscribe()
+    }
+  }, [selectedChannel])
+
+  // Rest of your component code...
+} 

@@ -1,8 +1,15 @@
 import React, { useRef, useEffect, useState } from 'react'
 import LoadingSpinner from '../LoadingSpinner'
+import type { Message } from '@/types'
 
-const MessageList = () => {
-  const messageListRef = useRef(null)
+interface MessageListProps {
+  messages: Message[]
+  selectedChannel: string
+  fetchMessages: () => Promise<void>
+}
+
+export function MessageList({ messages, selectedChannel, fetchMessages }: MessageListProps) {
+  const messageListRef = useRef<HTMLDivElement>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const scrollToBottom = () => {
@@ -15,11 +22,11 @@ const MessageList = () => {
   useEffect(() => {
     setIsLoading(true)
     fetchMessages().finally(() => setIsLoading(false))
-  }, [selectedChannel])
+  }, [selectedChannel, fetchMessages])
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages, selectedChannel]) // Scroll when messages change or channel changes
+  }, [messages, selectedChannel])
 
   return (
     <div ref={messageListRef} className="message-list">
@@ -32,6 +39,4 @@ const MessageList = () => {
       )}
     </div>
   )
-}
-
-export default MessageList 
+} 
