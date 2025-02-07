@@ -79,16 +79,86 @@ export async function GET(
 
     // Get Discord client and fetch messages
     const client = await getDiscordClient(wallet)
+    console.log('🤖 Got Discord client for wallet:', wallet)
+    
     const channel = await client.channels.fetch(channelId)
+    if (!channel) {
+      console.error('❌ Channel not found:', channelId)
+      throw new Error('Channel not found')
+    }
+
+    console.log('📺 Fetched channel:', {
+      id: channel.id,
+      type: channel.type,
+      isText: channel instanceof TextChannel
+    })
     
     if (!(channel instanceof TextChannel)) {
       throw new Error('Channel is not a text channel')
     }
 
+    console.log('🔍 Attempting to fetch messages from Discord...')
     const discordMessages = await channel.messages.fetch({ limit: 50 })
+    console.log('📨 Got messages from Discord:', {
+      count: discordMessages.size,
+      first: Array.from(discordMessages.values())[0]?.content.substring(0, 30)
+    })
+
     const messageArray = Array.from(discordMessages.values())
       .reverse()
       .map(transformDiscordMessage)
+    console.log('🔄 Transformed messages:', messageArray.map(m => ({
+      id: m.id,
+      content: m.content.substring(0, 30),
+      author: m.author.username,
+      created_at: m.created_at
+    })))
+
+    // Save messages to Supabase
+    console.log('💾 Attempting to save messages to Supabase:', {
+      channelId,
+      messageCount: messageArray.length,
+      firstMessage: messageArray[0],
+      wallet
+    })
+
+    const messagesToUpsert = messageArray.map(msg => {
+      const messageData = {
+        id: msg.id,
+        channel_id: channelId,
+        sender_id: msg.author.id,
+        content: msg.content,
+        sent_at: msg.created_at
+      }
+      console.log('Message:', {
+        id: messageData.id.substring(0, 8) + '...',
+        channel: messageData.channel_id,
+        sender: messageData.sender_id,
+        content: messageData.content.substring(0, 50) + (messageData.content.length > 50 ? '...' : ''),
+        sent_at: messageData.sent_at
+      })
+      return messageData
+    })
+
+    const { error: saveError, data: savedData } = await supabase
+      .from('messages')
+      .upsert(messagesToUpsert, { onConflict: 'id' })
+      .select()
+
+    if (saveError) {
+      console.error('❌ Error saving messages:', {
+        error: saveError,
+        code: saveError.code,
+        details: saveError.details,
+        message: saveError.message
+      })
+    } else {
+      console.log('✅ Successfully saved messages:', {
+        count: savedData.length,
+        channelId,
+        firstSavedId: savedData[0]?.id
+      })
+    }
 
     // Get last viewed time
     const { data: lastViewed } = await supabase
