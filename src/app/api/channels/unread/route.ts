@@ -27,21 +27,17 @@ export async function GET(request: Request) {
     // Get messages from Supabase (not Discord)
     const { data: messages, error: messagesError } = await supabase
       .from('messages')
-      .select('channel_id, sent_at')
+      .select('*')  // Get all fields for debugging
       .in('channel_id', assignment.channel_access)
       .order('sent_at', { ascending: false })
 
-    console.log('🔍 Checking messages table:', {
-      foundMessages: messages ? messages.length > 0 : false,
-      channels: assignment.channel_access,
-      messageChannels: messages?.map(m => m.channel_id) || [],
-      latestMessages: messages?.reduce((acc, msg) => {
-        // Group by channel
-        if (!acc[msg.channel_id] || new Date(msg.sent_at) > new Date(acc[msg.channel_id].sent_at)) {
-          acc[msg.channel_id] = msg
-        }
+    console.log('🔍 Messages in DB:', {
+      total: messages?.length || 0,
+      byChannel: messages?.reduce((acc, msg) => {
+        acc[msg.channel_id] = (acc[msg.channel_id] || 0) + 1
         return acc
-      }, {} as Record<string, any>)
+      }, {} as Record<string, number>),
+      latest: messages?.[0]
     })
 
     if (messagesError) {

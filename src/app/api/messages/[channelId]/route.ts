@@ -90,10 +90,16 @@ export async function GET(
     console.log('📺 Fetched channel:', {
       id: channel.id,
       type: channel.type,
-      isText: channel instanceof TextChannel
+      isText: channel instanceof TextChannel,
+      name: channel instanceof TextChannel ? channel.name : 'unknown'
     })
     
     if (!(channel instanceof TextChannel)) {
+      console.error('❌ Channel is not a text channel:', {
+        channelId,
+        type: channel.type,
+        constructor: channel.constructor.name
+      })
       throw new Error('Channel is not a text channel')
     }
 
@@ -101,7 +107,12 @@ export async function GET(
     const discordMessages = await channel.messages.fetch({ limit: 50 })
     console.log('📨 Got messages from Discord:', {
       count: discordMessages.size,
-      first: Array.from(discordMessages.values())[0]?.content.substring(0, 30)
+      first: discordMessages.first()?.content.substring(0, 30),
+      last: discordMessages.last()?.content.substring(0, 30),
+      timestamps: {
+        first: discordMessages.first()?.createdAt,
+        last: discordMessages.last()?.createdAt
+      }
     })
 
     const messageArray = Array.from(discordMessages.values())
@@ -114,30 +125,28 @@ export async function GET(
       created_at: m.created_at
     })))
 
-    // Save messages to Supabase
-    console.log('💾 Attempting to save messages to Supabase:', {
-      channelId,
-      messageCount: messageArray.length,
-      firstMessage: messageArray[0],
-      wallet
-    })
+    // Save messages to Supabase with more detailed logging
+    const messagesToUpsert = messageArray.map(msg => ({
+      id: msg.id,
+      channel_id: channelId,
+      sender_id: msg.author.id,
+      content: msg.content,
+      sent_at: msg.created_at
+    }))
 
-    const messagesToUpsert = messageArray.map(msg => {
-      const messageData = {
-        id: msg.id,
-        channel_id: channelId,
-        sender_id: msg.author.id,
-        content: msg.content,
-        sent_at: msg.created_at
+    console.log('💾 Preparing to save messages:', {
+      count: messagesToUpsert.length,
+      channelId,
+      firstMessage: {
+        id: messagesToUpsert[0]?.id,
+        content: messagesToUpsert[0]?.content.substring(0, 30),
+        sent_at: messagesToUpsert[0]?.sent_at
+      },
+      lastMessage: {
+        id: messagesToUpsert[messagesToUpsert.length - 1]?.id,
+        content: messagesToUpsert[messagesToUpsert.length - 1]?.content.substring(0, 30),
+        sent_at: messagesToUpsert[messagesToUpsert.length - 1]?.sent_at
       }
-      console.log('Message:', {
-        id: messageData.id.substring(0, 8) + '...',
-        channel: messageData.channel_id,
-        sender: messageData.sender_id,
-        content: messageData.content.substring(0, 50) + (messageData.content.length > 50 ? '...' : ''),
-        sent_at: messageData.sent_at
-      })
-      return messageData
     })
 
     const { error: saveError, data: savedData } = await supabase
