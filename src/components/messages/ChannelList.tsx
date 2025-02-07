@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { RealtimeChannel } from '@supabase/supabase-js'
 
 interface Message {
   id: string
@@ -23,17 +24,21 @@ export function ChannelList({ selectedChannel, onChannelSelect }: ChannelListPro
       }
     }
 
-    supabase
+    const channel = supabase
       .channel('messages')
       .on(
-        'INSERT',
-        'public:messages',
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages'
+        },
         handleNewMessage
       )
       .subscribe()
 
     return () => {
-      supabase.channel('messages').unsubscribe()
+      channel.unsubscribe()
     }
   }, [selectedChannel])
 
