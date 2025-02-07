@@ -22,47 +22,37 @@ export function BotAssignment() {
   const [editMode, setEditMode] = useState<string | null>(null)
   const [editToken, setEditToken] = useState('')
 
-  // Fetch existing assignments
-  useEffect(() => {
-    const fetchAssignments = async () => {
-      console.log('🔄 Fetching bot assignments...')
-      
+  // Move fetchAssignments to component scope
+  const fetchAssignments = async () => {
+    try {
       // Get all assignments first
-      const { data: assignments, error: assignError } = await supabase
+      const { data: assignments } = await supabase
         .from('bot_assignments')
         .select('wallet_address, channel_access, is_admin')
 
-      if (assignError) {
-        console.error('❌ Error fetching assignments:', assignError)
-        return
-      }
-
       // Get bot tokens
-      const { data: botTokens, error: botError } = await supabase
+      const { data: botTokens } = await supabase
         .from('bot_tokens')
         .select('*')
       
-      if (botError) {
-        console.error('❌ Error fetching bot tokens:', botError)
-        return
-      }
-
-      console.log('📊 Raw data:', { botTokens, assignments })
-
-      // Start with assignments and add bot data if it exists
-      const combinedData = assignments.map(assignment => ({
+      // Combine the data
+      const combinedData = assignments?.map(assignment => ({
         wallet_address: assignment.wallet_address,
         channel_access: assignment.channel_access || [],
         is_admin: assignment.is_admin,
-        bot_token: '', // We don't show the actual token
-        bot_name: botTokens.find(b => b.wallet_address === assignment.wallet_address)?.bot_name || 'No Bot Assigned',
-        ...botTokens.find(b => b.wallet_address === assignment.wallet_address)
-      }))
+        bot_token: '',
+        bot_name: botTokens?.find(b => b.wallet_address === assignment.wallet_address)?.bot_name || 'No Bot Assigned',
+        ...botTokens?.find(b => b.wallet_address === assignment.wallet_address)
+      })) || []
 
-      console.log('✅ Combined assignments:', combinedData)
       setAssignments(combinedData)
+    } catch (error) {
+      console.error('Failed to fetch assignments:', error)
     }
+  }
 
+  // Fetch existing assignments
+  useEffect(() => {
     fetchAssignments()
   }, [])
 
@@ -98,11 +88,7 @@ export function BotAssignment() {
         setNewBotToken('')
         setTargetWallet('')
         // Refresh assignments
-        const { data: newAssignments } = await supabase
-          .from('bot_tokens')
-          .select('*')
-          .order('created_at', { ascending: false })
-        if (newAssignments) setAssignments(newAssignments)
+        fetchAssignments()
       } else {
         throw new Error(data.error)
       }
