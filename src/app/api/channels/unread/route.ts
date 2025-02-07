@@ -3,6 +3,15 @@ import { getDiscordClient } from '@/lib/discord'
 import { supabase } from '@/lib/supabase'
 import { TextChannel } from 'discord.js'
 
+// Add type for messages
+interface DBMessage {
+  id: string
+  channel_id: string
+  sender_id: string
+  content: string
+  sent_at: string
+}
+
 export async function GET(request: Request) {
   try {
     const wallet = request.headers.get('x-wallet-address')
@@ -27,17 +36,32 @@ export async function GET(request: Request) {
     // Get messages from Supabase (not Discord)
     const { data: messages, error: messagesError } = await supabase
       .from('messages')
-      .select('*')  // Get all fields for debugging
+      .select('*')
       .in('channel_id', assignment.channel_access)
-      .order('sent_at', { ascending: false })
+      .order('sent_at', { ascending: false }) as { 
+        data: DBMessage[] | null, 
+        error: any 
+      }
 
-    console.log('🔍 Messages in DB:', {
+    console.log('🔍 All messages in DB:', {
       total: messages?.length || 0,
       byChannel: messages?.reduce((acc, msg) => {
         acc[msg.channel_id] = (acc[msg.channel_id] || 0) + 1
         return acc
       }, {} as Record<string, number>),
-      latest: messages?.[0]
+      latestByChannel: messages ? Object.fromEntries(
+        Object.entries(
+          messages.reduce((acc, msg) => {
+            if (!acc[msg.channel_id] || new Date(msg.sent_at) > new Date(acc[msg.channel_id].sent_at)) {
+              acc[msg.channel_id] = msg
+            }
+            return acc
+          }, {} as Record<string, DBMessage>)
+        ).map(([channel, msg]) => [channel, {
+          id: msg.id,
+          sent_at: msg.sent_at
+        }])
+      ) : {}
     })
 
     if (messagesError) {
