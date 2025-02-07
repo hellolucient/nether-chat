@@ -107,7 +107,7 @@ export function Chat({ channelId }: ChatProps) {
     if (!channelId) return
 
     try {
-      console.log('📨 Chat: Sending message:', { channelId, contentType: typeof content === 'object' ? content.type : 'text' })
+      console.log('📨 Chat: Sending message...')
       
       const response = await fetch(`/api/messages/${channelId}`, {
         method: 'POST',
@@ -121,8 +121,14 @@ export function Chat({ channelId }: ChatProps) {
         throw new Error('Failed to send message')
       }
 
-      // Force refresh messages after sending
+      // Add delay to allow Discord to process
+      console.log('Waiting for Discord to process...')
+      await new Promise(resolve => setTimeout(resolve, 1500))
+
+      // Force refresh messages after delay
+      console.log('Refreshing messages...')
       await fetchMessages()
+      console.log('Messages refreshed')
 
       // After sending, check for new messages in other channels
       await checkUnreadChannels()

@@ -1,16 +1,23 @@
 import React, { useRef, useEffect, useState } from 'react'
-import LoadingSpinner from '../LoadingSpinner'
+import LoadingSpinner from '@/components/LoadingSpinner'
 import type { Message } from '@/types'
 
 interface MessageListProps {
   messages: Message[]
-  selectedChannel: string
-  fetchMessages: () => Promise<void>
+  channelId: string
+  onRefresh: () => Promise<void>
+  onReplyTo: (message: Message | null) => void
+  loading: boolean
 }
 
-export function MessageList({ messages, selectedChannel, fetchMessages }: MessageListProps) {
+export function MessageList({ 
+  messages, 
+  channelId, 
+  onRefresh,
+  onReplyTo,
+  loading 
+}: MessageListProps) {
   const messageListRef = useRef<HTMLDivElement>(null)
-  const [isLoading, setIsLoading] = useState(true)
 
   const scrollToBottom = () => {
     const messageList = messageListRef.current
@@ -20,18 +27,13 @@ export function MessageList({ messages, selectedChannel, fetchMessages }: Messag
   }
 
   useEffect(() => {
-    setIsLoading(true)
-    fetchMessages().finally(() => setIsLoading(false))
-  }, [selectedChannel, fetchMessages])
-
-  useEffect(() => {
     scrollToBottom()
-  }, [messages, selectedChannel])
+  }, [messages, channelId])
 
   return (
-    <div ref={messageListRef} className="message-list h-full overflow-y-auto">
-      {isLoading ? (
-        <div className="flex justify-center items-center h-full">
+    <div ref={messageListRef} className="message-list h-full overflow-y-auto relative">
+      {loading ? (
+        <div className="absolute inset-0 flex justify-center items-center bg-black/50">
           <LoadingSpinner />
         </div>
       ) : (

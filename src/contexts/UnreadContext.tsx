@@ -41,9 +41,19 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
 
     try {
       console.log('Checking unread channels for wallet:', publicKey.toString())
-      const response = await fetch(`/api/channels/unread?wallet=${publicKey}`)
-      const data = await response.json()
+      const response = await fetch(`/api/channels/unread`, {
+        headers: {
+          'x-wallet-address': publicKey.toString()
+        }
+      })
       
+      if (!response.ok) {
+        const error = await response.text()
+        console.error('Error response:', error)
+        return
+      }
+
+      const data = await response.json()
       if (data.unreadChannels) {
         console.log('Found unread channels:', data.unreadChannels)
         setUnreadChannels(new Set(data.unreadChannels))

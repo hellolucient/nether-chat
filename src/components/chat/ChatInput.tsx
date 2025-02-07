@@ -196,6 +196,14 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
         onCancelReply()
       }
 
+      // Add delay and refresh
+      console.log('Waiting for Discord to process...')
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      
+      console.log('Refreshing messages...')
+      await onRefreshMessages()
+      console.log('Messages refreshed')
+
       // Wait before resetting send status
       setTimeout(() => setSendStatus('idle'), 2000)
     } catch (error) {
