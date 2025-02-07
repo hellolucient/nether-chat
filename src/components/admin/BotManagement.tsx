@@ -7,8 +7,9 @@ import { TrashIcon, PencilIcon } from '@heroicons/react/24/outline'
 
 interface Bot {
   id: string
-  bot_token: string
   bot_name: string
+  bot_token: string
+  created_at: string
 }
 
 export function BotManagement() {
@@ -23,7 +24,7 @@ export function BotManagement() {
   // Fetch bots
   const fetchBots = async () => {
     const { data, error } = await supabase
-      .from('bot_tokens')
+      .from('discord_bots')
       .select('*')
       .order('created_at', { ascending: false })
     
@@ -45,7 +46,7 @@ export function BotManagement() {
     try {
       if (editingBot) {
         const { error } = await supabase
-          .from('bot_tokens')
+          .from('discord_bots')
           .update({
             bot_name: formData.botName,
             bot_token: formData.botToken
@@ -55,7 +56,7 @@ export function BotManagement() {
         if (error) throw error
       } else {
         const { error } = await supabase
-          .from('bot_tokens')
+          .from('discord_bots')
           .insert({
             bot_name: formData.botName,
             bot_token: formData.botToken
@@ -158,7 +159,7 @@ export function BotManagement() {
                   onClick={async () => {
                     if (!confirm('Are you sure you want to delete this bot?')) return
                     const { error } = await supabase
-                      .from('bot_tokens')
+                      .from('discord_bots')
                       .delete()
                       .eq('id', bot.id)
                     if (error) {

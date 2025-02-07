@@ -35,6 +35,13 @@ type MessageContent = string | ImageMessage | TextMessage
 
 const clientCache = new Map<string, Client>()
 
+interface BotAssignment {
+  bot_id: string
+  discord_bots: {
+    bot_token: string
+  }
+}
+
 export async function initializeDiscordBot() {
   try {
     if (!client) {
@@ -56,37 +63,26 @@ export async function initializeDiscordBot() {
 
 export { client }
 
-export async function getDiscordClient(walletAddress?: string): Promise<Client> {
-  if (!walletAddress) {
-    // Fall back to default bot for non-authenticated actions
-    const client = new Client({
-      intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-      ]
-    })
-    await client.login(process.env.DISCORD_BOT_TOKEN!)
-    return client
-  }
+export async function getDiscordClient(walletAddress?: string) {
+  if (!walletAddress) throw new Error('No wallet address provided')
 
-  // Check cache first
-  if (clientCache.has(walletAddress)) {
-    return clientCache.get(walletAddress)!
-  }
-
-  // Get user's bot token
-  const { data: botData } = await supabase
-    .from('bot_tokens')
-    .select('bot_token')
+  // Get user's bot assignment and associated bot token
+  const { data: assignment } = await supabase
+    .from('bot_assignments')
+    .select(`
+      bot_id,
+      discord_bots (
+        bot_token
+      )
+    `)
     .eq('wallet_address', walletAddress)
-    .single()
+    .single() as { data: BotAssignment | null }
 
-  if (!botData?.bot_token) {
+  if (!assignment?.discord_bots?.bot_token) {
     throw new Error('No bot token found for this wallet')
   }
 
-  // Create new client
+  // Create new client with user's bot token
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -94,9 +90,7 @@ export async function getDiscordClient(walletAddress?: string): Promise<Client> 
       GatewayIntentBits.MessageContent,
     ]
   })
-
-  await client.login(botData.bot_token)
-  clientCache.set(walletAddress, client)
+  await client.login(assignment.discord_bots.bot_token)
   return client
 }
 

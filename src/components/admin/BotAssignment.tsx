@@ -8,12 +8,17 @@ import { TrashIcon, PencilIcon } from '@heroicons/react/24/outline'
 interface User {
   id: string
   wallet_address: string
-  created_at: string
-  bot_username: string | null
-  bot_avatar_url: string | null
-  channel_access: string[]
   username: string
+  channel_access: string[]
   is_admin: boolean
+  bot_id: string
+  created_at: string
+}
+
+interface Bot {
+  id: string
+  bot_name: string
+  bot_token?: string
 }
 
 interface Channel {
@@ -24,26 +29,32 @@ interface Channel {
 export function BotAssignment() {
   const { publicKey } = useWallet()
   const [users, setUsers] = useState<User[]>([])
+  const [bots, setBots] = useState<Bot[]>([])
   const [channels, setChannels] = useState<Channel[]>([])
   const [editingUser, setEditingUser] = useState<string | null>(null)
   
-  // Form state
+  // Update form state
   const [formData, setFormData] = useState({
     username: '',
     walletAddress: '',
-    botToken: '',
+    selectedBot: '',  // Changed from botToken to selectedBot
     selectedChannels: [] as string[],
-    isAdmin: false,
-    botUsername: '',
-    botAvatarUrl: '',
-    botName: ''
+    isAdmin: false
   })
 
-  // Fetch initial data
+  // Add bot fetching
   useEffect(() => {
+    fetchBots()
     fetchUsers()
     fetchChannels()
   }, [])
+
+  const fetchBots = async () => {
+    const { data } = await supabase
+      .from('discord_bots')
+      .select('id, bot_name')
+    setBots(data || [])
+  }
 
   // Fetch users with their bot tokens and channel access
   const fetchUsers = async () => {
@@ -67,87 +78,65 @@ export function BotAssignment() {
 
   // Fetch available channels
   const fetchChannels = async () => {
-    const response = await fetch('/api/channels')
-    const data = await response.json()
-    setChannels(data.channels || [])
+    try {
+      console.log('Fetching channels...')
+      const response = await fetch('/api/channels')
+      const data = await response.json()
+      console.log('Channel data received:', data)
+      
+      if (!data.channels) {
+        console.error('No channels returned from API')
+        return
+      }
+
+      console.log('Setting channels:', data.channels)
+      setChannels(data.channels)
+    } catch (error) {
+      console.error('Error fetching channels:', error)
+    }
   }
 
-  // Handle form submission (create/edit)
+  // Update handleSubmit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!publicKey) return
+    if (!publicKey || !formData.selectedBot) return
 
     try {
       if (editingUser) {
-        // Update existing user
-        const [assignmentResult, tokenResult] = await Promise.all([
-          supabase
-            .from('bot_assignments')
-            .update({
-              username: formData.username,
-              bot_username: formData.botUsername,
-              bot_avatar_url: formData.botAvatarUrl,
-              channel_access: formData.selectedChannels,
-              is_admin: formData.isAdmin
-            })
-            .eq('wallet_address', editingUser),
-          
-          // Only update token if provided
-          formData.botToken ? 
-            supabase
-              .from('bot_tokens')
-              .update({
-                bot_token: formData.botToken,
-                bot_name: formData.botName || formData.botUsername
-              })
-              .eq('wallet_address', editingUser) 
-            : Promise.resolve()
-        ])
+        const { error } = await supabase
+          .from('bot_assignments')
+          .update({
+            username: formData.username,
+            bot_id: formData.selectedBot,
+            channel_access: formData.selectedChannels,
+            is_admin: formData.isAdmin
+          })
+          .eq('wallet_address', editingUser)
 
-        if (assignmentResult.error) throw assignmentResult.error
-        if (tokenResult?.error) throw tokenResult.error
-
+        if (error) throw error
       } else {
-        // Create new user
-        const [assignmentResult, tokenResult] = await Promise.all([
-          supabase
-            .from('bot_assignments')
-            .insert({
-              wallet_address: formData.walletAddress,
-              username: formData.username,
-              bot_username: formData.botUsername,
-              bot_avatar_url: formData.botAvatarUrl,
-              channel_access: formData.selectedChannels,
-              is_admin: formData.isAdmin
-            }),
-          
-          supabase
-            .from('bot_tokens')
-            .insert({
-              wallet_address: formData.walletAddress,
-              bot_token: formData.botToken,
-              bot_name: formData.botName || formData.botUsername
-            })
-        ])
+        const { error } = await supabase
+          .from('bot_assignments')
+          .insert({
+            wallet_address: formData.walletAddress,
+            username: formData.username,
+            bot_id: formData.selectedBot,
+            channel_access: formData.selectedChannels,
+            is_admin: formData.isAdmin
+          })
 
-        if (assignmentResult.error) throw assignmentResult.error
-        if (tokenResult.error) throw tokenResult.error
+        if (error) throw error
       }
 
-      // Reset form and refresh data
       setFormData({
         username: '',
         walletAddress: '',
-        botToken: '',
+        selectedBot: '',
         selectedChannels: [],
-        isAdmin: false,
-        botUsername: '',
-        botAvatarUrl: '',
-        botName: ''
+        isAdmin: false
       })
       setEditingUser(null)
       fetchUsers()
-
     } catch (error) {
       console.error('Error saving user:', error)
       alert('Failed to save user: ' + (error instanceof Error ? error.message : 'Unknown error'))
@@ -159,20 +148,12 @@ export function BotAssignment() {
     if (!confirm('Are you sure you want to delete this user?')) return
 
     try {
-      const [assignmentResult, tokenResult] = await Promise.all([
-        supabase
-          .from('bot_assignments')
-          .delete()
-          .eq('wallet_address', walletAddress),
-        
-        supabase
-          .from('bot_tokens')
-          .delete()
-          .eq('wallet_address', walletAddress)
-      ])
+      const { error } = await supabase
+        .from('bot_assignments')
+        .delete()
+        .eq('wallet_address', walletAddress)
 
-      if (assignmentResult.error) throw assignmentResult.error
-      if (tokenResult.error) throw tokenResult.error
+      if (error) throw error
 
       fetchUsers()
     } catch (error) {
@@ -216,19 +197,24 @@ export function BotAssignment() {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-300">Bot Token</label>
-            <input
-              type="password"
-              value={formData.botToken}
-              onChange={(e) => setFormData(prev => ({...prev, botToken: e.target.value}))}
+            <label className="block text-sm font-medium text-gray-300">Bot</label>
+            <select
+              value={formData.selectedBot}
+              onChange={(e) => setFormData(prev => ({...prev, selectedBot: e.target.value}))}
               className="mt-1 block w-full px-3 py-2 bg-[#262626] rounded-md"
-              required={!editingUser}
-              placeholder={editingUser ? '(Leave blank to keep current token)' : ''}
-            />
+              required
+            >
+              <option value="">Select a bot</option>
+              {bots.map(bot => (
+                <option key={bot.id} value={bot.id}>{bot.bot_name}</option>
+              ))}
+            </select>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Channel Access</label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Channel Access
+            </label>
             <div className="space-y-2 max-h-48 overflow-y-auto p-2 bg-[#262626] rounded-md">
               {channels.map(channel => (
                 <label key={channel.id} className="flex items-center gap-2">
@@ -250,38 +236,6 @@ export function BotAssignment() {
               ))}
             </div>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-300">Bot Username</label>
-            <input
-              type="text"
-              value={formData.botUsername}
-              onChange={(e) => setFormData(prev => ({...prev, botUsername: e.target.value}))}
-              className="mt-1 block w-full px-3 py-2 bg-[#262626] rounded-md"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-300">Bot Avatar URL</label>
-            <input
-              type="text"
-              value={formData.botAvatarUrl}
-              onChange={(e) => setFormData(prev => ({...prev, botAvatarUrl: e.target.value}))}
-              className="mt-1 block w-full px-3 py-2 bg-[#262626] rounded-md"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-300">Bot Name</label>
-            <input
-              type="text"
-              value={formData.botName}
-              onChange={(e) => setFormData(prev => ({...prev, botName: e.target.value}))}
-              className="mt-1 block w-full px-3 py-2 bg-[#262626] rounded-md"
-              required
-              placeholder="Name for the bot in Discord"
-            />
-          </div>
         </div>
 
         <div className="flex gap-4">
@@ -300,12 +254,9 @@ export function BotAssignment() {
                 setFormData({
                   username: '',
                   walletAddress: '',
-                  botToken: '',
+                  selectedBot: '',
                   selectedChannels: [],
-                  isAdmin: false,
-                  botUsername: '',
-                  botAvatarUrl: '',
-                  botName: ''
+                  isAdmin: false
                 })
               }}
               className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
@@ -324,7 +275,7 @@ export function BotAssignment() {
             <div className="flex justify-between items-start">
               <div>
                 <h4 className="font-medium text-purple-300">
-                  {user.bot_username || 'Unnamed Bot'}
+                  {user.bot_id ? bots.find(b => b.id === user.bot_id)?.bot_name || 'Unnamed Bot' : 'Unassigned'}
                 </h4>
                 <p className="text-sm text-gray-400 mt-1">{user.wallet_address}</p>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -345,12 +296,9 @@ export function BotAssignment() {
                     setFormData({
                       username: user.username,
                       walletAddress: user.wallet_address,
-                      botToken: '',
+                      selectedBot: user.bot_id || '',
                       selectedChannels: user.channel_access || [],
-                      isAdmin: user.is_admin || false,
-                      botUsername: user.bot_username || '',
-                      botAvatarUrl: user.bot_avatar_url || '',
-                      botName: ''
+                      isAdmin: user.is_admin || false
                     })
                   }}
                   className="p-2 text-gray-400 hover:text-purple-300"
