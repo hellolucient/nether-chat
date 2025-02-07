@@ -29,13 +29,19 @@ export function MessageList({ messages, selectedChannel, fetchMessages }: Messag
   }, [messages, selectedChannel])
 
   return (
-    <div ref={messageListRef} className="message-list">
+    <div ref={messageListRef} className="message-list h-full overflow-y-auto">
       {isLoading ? (
         <div className="flex justify-center items-center h-full">
           <LoadingSpinner />
         </div>
       ) : (
-        // Message list content
+        <div className="space-y-4 p-4">
+          {messages.map((message) => (
+            <div key={message.id} className="message">
+              <div className="text-sm text-gray-300">{message.content}</div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
