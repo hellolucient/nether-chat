@@ -22,27 +22,27 @@ function transformDiscordMessage(msg: DiscordMessage): Message {
   return {
     id: msg.id,
     content: msg.content,
+    channelId: msg.channelId,
     author: {
       username: msg.author.username,
       id: msg.author.id
     },
     timestamp: msg.createdAt.toISOString(),
-    attachments: Array.from(msg.attachments.values()).map(attachment => ({
-      url: attachment.url,
-      content_type: attachment.contentType || undefined,
-      filename: attachment.name
+    attachments: Array.from(msg.attachments.values()).map(a => ({
+      url: a.url,
+      content_type: a.contentType || undefined,
+      filename: a.name
     })),
-    embeds: msg.embeds.map(embed => ({
-      type: embed.data.type as string || 'rich',
-      url: embed.data.url || undefined,
-      image: embed.data.image ? { 
-        url: embed.data.image.url 
-      } : undefined
+    embeds: msg.embeds.map(e => ({
+      type: e.data.type || 'rich',
+      url: e.url || undefined,
+      image: e.image ? { url: e.image.url } : undefined
     })),
-    sticker_items: msg.stickers.map(sticker => ({
-      id: sticker.id,
-      name: sticker.name
-    }))
+    sticker_items: Array.from(msg.stickers.values()).map(s => ({
+      id: s.id,
+      name: s.name
+    })),
+    created_at: msg.createdAt.toISOString()
   }
 }
 
