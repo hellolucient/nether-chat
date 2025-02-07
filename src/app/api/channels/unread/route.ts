@@ -30,11 +30,13 @@ export async function GET(request: Request) {
       .select('channel_id, sent_at')
       .in('channel_id', assignment.channel_access)
       .order('sent_at', { ascending: false })
+      .limit(1)  // Get just the latest message per channel
 
-    console.log('Messages from DB:', {
-      count: messages?.length,
-      channels: messages?.map(m => m.channel_id),
-      latestTimestamp: messages?.[0]?.sent_at
+    console.log('🔍 Checking messages table:', {
+      foundMessages: messages ? messages.length > 0 : false,  // Handle undefined case
+      channels: assignment.channel_access,
+      messageChannels: messages?.map(m => m.channel_id) || [],  // Provide default empty array
+      latestMessage: messages?.[0] || null  // Provide default null
     })
 
     if (messagesError) {
