@@ -7,9 +7,9 @@ import { supabase } from '@/lib/supabase'
 interface UserProfile {
   username: string
   bot_id: string
-  discord_bots?: {
+  discord_bots: {
     bot_name: string
-  }
+  } | null  // Make it nullable since it's a join
 }
 
 export function ProfileInfo() {
@@ -25,14 +25,21 @@ export function ProfileInfo() {
         .select(`
           username,
           bot_id,
-          discord_bots (
+          discord_bots:discord_bots (
             bot_name
           )
         `)
         .eq('wallet_address', publicKey.toString())
         .single()
 
-      setProfile(data)
+      if (data) {
+        // Transform data to match our interface
+        setProfile({
+          username: data.username,
+          bot_id: data.bot_id,
+          discord_bots: data.discord_bots?.[0] || null
+        })
+      }
     }
 
     fetchProfile()
