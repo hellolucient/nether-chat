@@ -26,7 +26,7 @@ export function ProfileInfo() {
         .select(`
           username,
           bot_id,
-          discord_bots!inner (
+          discord_bots (
             bot_name
           )
         `)
@@ -37,11 +37,17 @@ export function ProfileInfo() {
       console.log('Error if any:', error)
 
       if (data) {
-        console.log('Discord bots data:', data.discord_bots)
+        // Handle both array and single object cases
+        const botData = Array.isArray(data.discord_bots) 
+          ? data.discord_bots[0] 
+          : data.discord_bots
+
+        console.log('Bot data:', botData)
+        
         setProfile({
           username: data.username,
           bot_id: data.bot_id,
-          discord_bots: data.discord_bots[0] || null  // Access first item of array
+          discord_bots: botData || null
         })
       }
     }
