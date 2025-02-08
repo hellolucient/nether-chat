@@ -60,8 +60,12 @@ export async function initializeDiscordBot() {
 
     client.on('messageCreate', async (message) => {
       try {
+        // Get the current client user ID
+        const botId = client?.user?.id
+        if (!botId) return // Exit if no bot ID
+
         // Don't process messages from our own bot
-        if (message.author.id === client.user?.id) return;
+        if (message.author.id === botId) return
 
         console.log('📨 New Discord message:', {
           id: message.id,
