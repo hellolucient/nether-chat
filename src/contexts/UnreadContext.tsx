@@ -19,46 +19,37 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
     if (!publicKey) return
 
     try {
-      const timestamp = new Date().toISOString()
       console.log('📝 Attempting to update last_viewed:', {
         channelId,
         wallet: publicKey.toString(),
-        timestamp
+        timestamp: new Date().toISOString()
       })
 
-      // First check if entry exists
-      const { data: existing } = await supabase
+      const { error } = await supabase
+        .from('last_viewed')
+        .upsert({
+          channel_id: channelId,
+          wallet_address: publicKey.toString(),
+          last_viewed: new Date().toISOString(),
+          viewed_at: new Date().toISOString()
+        }, {
+          onConflict: 'channel_id,wallet_address'
+        })
+
+      if (error) {
+        console.error('❌ Error updating last_viewed:', error)
+        return
+      }
+
+      // Verify the update
+      const { data: updated } = await supabase
         .from('last_viewed')
         .select('*')
         .eq('channel_id', channelId)
         .eq('wallet_address', publicKey.toString())
         .single()
 
-      console.log('Existing last_viewed entry:', existing)
-
-      const { error } = await supabase.from('last_viewed').upsert({
-        channel_id: channelId,
-        wallet_address: publicKey.toString(),
-        last_viewed: timestamp,
-        viewed_at: timestamp
-      })
-
-      if (error) {
-        console.error('❌ Error updating last_viewed:', {
-          error,
-          code: error.code,
-          details: error.details,
-          message: error.message
-        })
-        return
-      }
-
-      console.log('✅ Updated last_viewed:', { channelId, timestamp })
-      setUnreadChannels(prev => {
-        const next = new Set(prev)
-        next.delete(channelId)
-        return next
-      })
+      console.log('🔍 Last viewed after update:', updated)
     } catch (error) {
       console.error('Failed to mark channel as read:', error)
     }
@@ -93,15 +84,20 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
     }
   }, [publicKey])
 
-  // Check for unread messages periodically
+  // Add some debug logging to see if we're getting notifications
   useEffect(() => {
     if (!publicKey) return
 
+    console.log('🔔 Setting up unread check for wallet:', publicKey.toString())
+    
     // Initial check
     checkUnreadChannels()
 
     // Set up periodic checks
-    const interval = setInterval(checkUnreadChannels, 30000) // Check every 30 seconds
+    const interval = setInterval(() => {
+      console.log('🔄 Running periodic unread check...')
+      checkUnreadChannels()
+    }, 30000)
 
     return () => clearInterval(interval)
   }, [publicKey, checkUnreadChannels])
