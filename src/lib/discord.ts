@@ -44,7 +44,10 @@ interface BotAssignment {
 
 export async function initializeDiscordBot() {
   try {
+    console.log('🤖 Starting Discord bot initialization...')
+    
     if (!client) {
+      console.log('📝 Creating new Discord client...')
       client = new Client({
         intents: [
           GatewayIntentBits.Guilds,
@@ -55,10 +58,21 @@ export async function initializeDiscordBot() {
         ]
       })
     }
-    await client.login(process.env.DISCORD_BOT_TOKEN)
-    console.log('Discord bot initialized')
+
+    await client.login(process.env.DISCORD_LISTENER_BOT_TOKEN)
+    console.log('✅ Bot logged in successfully')
+
+    // Add ready event listener
+    client.once('ready', () => {
+      console.log('🎉 Bot is ready and listening for messages!')
+    })
 
     client.on('messageCreate', async (message) => {
+      console.log('📨 RAW MESSAGE RECEIVED:', {
+        content: message.content,
+        author: message.author.username,
+        channel: message.channelId
+      })
       try {
         // Get the current client user ID
         const botId = client?.user?.id
