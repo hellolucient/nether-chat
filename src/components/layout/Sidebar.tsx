@@ -23,6 +23,15 @@ export function Sidebar({ channels, activeChannel, onSelectChannel }: SidebarPro
     hasUnread: channels.some(ch => unreadChannels.has(ch.id))
   })
 
+  // Add more detailed logging
+  useEffect(() => {
+    console.log('Unread channels updated:', {
+      unreadSet: Array.from(unreadChannels),
+      channelIds: channels.map(ch => ch.id),
+      matches: channels.filter(ch => unreadChannels.has(ch.id)).map(ch => ch.name)
+    })
+  }, [unreadChannels, channels])
+
   useEffect(() => {
     const loadInitialState = async () => {
       setLoading(true)

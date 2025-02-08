@@ -139,6 +139,7 @@ interface MessageListProps {
 export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
+  const [displayMessages, setDisplayMessages] = useState<Message[]>([])
 
   const scrollToBottom = (behavior: 'auto' | 'smooth' = 'auto') => {
     setTimeout(() => {
@@ -164,6 +165,21 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
     setIsInitialLoad(true)
   }, [channelId])
 
+  // Use a useEffect to smoothly transition messages
+  useEffect(() => {
+    if (loading) {
+      // Don't update messages while loading
+      return
+    }
+    
+    // Update messages with a slight delay to prevent flash
+    const timer = setTimeout(() => {
+      setDisplayMessages(messages)
+    }, 100)
+
+    return () => clearTimeout(timer)
+  }, [messages, loading])
+
   const handleRefresh = async () => {
     try {
       await onRefresh()
@@ -182,7 +198,9 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
 
   if (loading) {
     console.log('⏳ MessageList: Showing loading state')
-    return <div className="p-4 text-center">Loading messages...</div>
+    return <div className="flex items-center justify-center h-full">
+      <div className="animate-pulse">Loading messages...</div>
+    </div>
   }
 
   if (!messages || messages.length === 0) {
@@ -205,37 +223,27 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4">
-        {loading ? (
-          <div className="text-center text-gray-400">Loading messages...</div>
-        ) : messages.length === 0 ? (
-          <div className="text-center text-gray-400 mt-4">
-            No messages in the last 48 hours
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {messages.map((message) => (
-              <div key={message.id} className="flex gap-2 group">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-purple-300">
-                      {message.author.username}
-                    </span>
-                    <span className="text-xs text-gray-400">
-                      {new Date(message.timestamp).toLocaleString()}
-                    </span>
-                    <button
-                      onClick={() => onReplyTo(message)}
-                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-purple-300 text-sm"
-                    >
-                      Reply
-                    </button>
-                  </div>
-                  <MessageContent message={message} />
-                </div>
+        {displayMessages.map((message) => (
+          <div key={message.id} className="flex gap-2 group">
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-purple-300">
+                  {message.author.username}
+                </span>
+                <span className="text-xs text-gray-400">
+                  {new Date(message.timestamp).toLocaleString()}
+                </span>
+                <button
+                  onClick={() => onReplyTo(message)}
+                  className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-purple-300 text-sm"
+                >
+                  Reply
+                </button>
               </div>
-            ))}
+              <MessageContent message={message} />
+            </div>
           </div>
-        )}
+        ))}
         
         {/* Add this invisible div at the bottom */}
         <div ref={messagesEndRef} />

@@ -19,55 +19,53 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'No wallet address provided' }, { status: 400 })
     }
 
-    // Get user's channel access
-    const { data: assignment } = await supabase
+    // Get user's bot info
+    const { data: botAssignment } = await supabase
       .from('bot_assignments')
-      .select('channel_access')
+      .select(`
+        channel_access,
+        discord_bots (
+          bot_name,
+          bot_id
+        )
+      `)
       .eq('wallet_address', wallet)
       .single()
 
-    if (!assignment?.channel_access) {
+    if (!botAssignment?.discord_bots) {
       return NextResponse.json({ unreadChannels: [] })
     }
 
-    // Add debug logging
-    console.log('Checking unread messages for channels:', assignment.channel_access)
+    const botId = botAssignment.discord_bots.bot_id
+    const botName = botAssignment.discord_bots.bot_name
 
-    // Get messages from Supabase (not Discord)
-    const { data: messages, error: messagesError } = await supabase
-      .from('messages')
-      .select('*')
-      .in('channel_id', assignment.channel_access)
-      .order('sent_at', { ascending: false }) as { 
-        data: DBMessage[] | null, 
-        error: any 
-      }
-
-    console.log('🔍 All messages in DB:', {
-      total: messages?.length || 0,
-      byChannel: messages?.reduce((acc, msg) => {
-        acc[msg.channel_id] = (acc[msg.channel_id] || 0) + 1
-        return acc
-      }, {} as Record<string, number>),
-      latestByChannel: messages ? Object.fromEntries(
-        Object.entries(
-          messages.reduce((acc, msg) => {
-            if (!acc[msg.channel_id] || new Date(msg.sent_at) > new Date(acc[msg.channel_id].sent_at)) {
-              acc[msg.channel_id] = msg
-            }
-            return acc
-          }, {} as Record<string, DBMessage>)
-        ).map(([channel, msg]) => [channel, {
-          id: msg.id,
-          sent_at: msg.sent_at
-        }])
-      ) : {}
+    // Get messages that either:
+    // 1. Contains a mention of our bot (<@botId>)
+    // 2. Is a reply to our bot's message
+    console.log('🔍 Checking for mentions/replies:', {
+      botId,
+      botName,
+      channels: botAssignment.channel_access,
+      mentionFormat: `<@${botId}>` // This is how Discord formats mentions
     })
 
-    if (messagesError) {
-      console.error('❌ Error fetching messages:', messagesError)
-      return NextResponse.json({ error: 'Failed to check unread channels' }, { status: 500 })
-    }
+    const { data: messages } = await supabase
+      .from('messages')
+      .select('*')
+      .in('channel_id', botAssignment.channel_access)
+      .or(`content.ilike.%<@${botId}>%,referenced_message_author_id.eq.${botId}`)
+      .order('sent_at', { ascending: false })
+
+    console.log('📨 Found messages:', {
+      count: messages?.length || 0,
+      messages: messages?.map(m => ({
+        id: m.id,
+        content: m.content.substring(0, 50),
+        mentions_bot: m.content.includes(`<@${botId}>`),
+        replies_to_bot: m.referenced_message_author_id === botId,
+        channel: m.channel_id
+      }))
+    })
 
     // Get last viewed times
     const { data: lastViewed } = await supabase
@@ -75,41 +73,18 @@ export async function GET(request: Request) {
       .select('*')
       .eq('wallet_address', wallet)
 
-    console.log('Last viewed entries:', lastViewed)
-
-    // Create a map of channel IDs to last viewed times
     const lastViewedMap = new Map(
       lastViewed?.map(item => [item.channel_id, new Date(item.last_viewed)]) || []
     )
 
-    // Check each channel for unread messages
-    const unreadChannels = assignment.channel_access.filter(channelId => {
-      const lastViewedTime = lastViewedMap.get(channelId) || new Date(0)
-      const latestMessage = messages?.find(msg => msg.channel_id === channelId)
-      
-      console.log('🔍 Checking channel:', {
-        channelId,
-        lastViewed: lastViewedTime,
-        latestMessage: latestMessage ? {
-          id: latestMessage.id,
-          sent_at: latestMessage.sent_at,
-          isNewer: new Date(latestMessage.sent_at) > lastViewedTime
-        } : null
-      })
-      
-      return latestMessage && new Date(latestMessage.sent_at) > lastViewedTime
-    })
-
-    console.log('📊 Channel check details:', {
-      channelAccess: assignment.channel_access,
-      lastViewed: Object.fromEntries(lastViewedMap),
-      latestMessages: messages?.reduce((acc, msg) => {
-        if (!acc[msg.channel_id] || new Date(msg.sent_at) > new Date(acc[msg.channel_id])) {
-          acc[msg.channel_id] = msg.sent_at
-        }
-        return acc
-      }, {} as Record<string, string>)
-    })
+    // Check which channels have unread mentions/replies
+    const unreadChannels = messages?.reduce((acc: string[], msg) => {
+      const lastViewedTime = lastViewedMap.get(msg.channel_id) || new Date(0)
+      if (new Date(msg.sent_at) > lastViewedTime) {
+        acc.push(msg.channel_id)
+      }
+      return acc
+    }, [])
 
     return NextResponse.json({ unreadChannels })
   } catch (error) {

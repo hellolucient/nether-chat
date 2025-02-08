@@ -3,6 +3,9 @@ import { supabase } from '@/lib/supabase'
 
 export async function POST(request: Request) {
   try {
+    console.log('🚨 WEBHOOK RECEIVED 🚨')
+    console.log('🕒 Time:', new Date().toISOString())
+    
     const rawBody = await request.text()
     console.log('📨 Received Discord webhook:', rawBody)
     

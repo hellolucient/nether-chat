@@ -17,9 +17,18 @@ export function MessageInput({ onSendMessage, onRefresh }: MessageInputProps) {
     if (!content.trim() || !publicKey) return
 
     try {
+      console.log('Sending message...')
       await onSendMessage(content)
-      await onRefresh()  // Refresh messages after sending
-      setContent('')  // Clear input after successful send
+      console.log('Message sent, clearing input...')
+      setContent('')  // Clear input immediately
+      
+      // Add a small delay before refreshing to allow Discord to process
+      console.log('Waiting for Discord...')
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      console.log('Refreshing messages...')
+      await onRefresh()  // Refresh after delay
+      console.log('Refresh complete')
     } catch (error) {
       console.error('Error sending message:', error)
     }
