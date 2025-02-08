@@ -50,11 +50,51 @@ export async function initializeDiscordBot() {
           GatewayIntentBits.Guilds,
           GatewayIntentBits.GuildMessages,
           GatewayIntentBits.MessageContent,
+          GatewayIntentBits.GuildMembers,
+          GatewayIntentBits.DirectMessages
         ]
       })
     }
     await client.login(process.env.DISCORD_BOT_TOKEN)
     console.log('Discord bot initialized')
+
+    client.on('messageCreate', async (message) => {
+      try {
+        // Don't process messages from our own bot
+        if (message.author.id === client.user?.id) return;
+
+        console.log('📨 New Discord message:', {
+          id: message.id,
+          channel: message.channelId,
+          author: message.author.username,
+          isReply: !!message.reference,
+          content: message.content.substring(0, 50),
+          mentions: message.mentions.users.map(u => u.id)
+        })
+
+        // Store message in Supabase
+        const messageData = {
+          id: message.id,
+          channel_id: message.channelId,
+          sender_id: message.author.id,
+          content: message.content,
+          sent_at: message.createdAt.toISOString(),
+          referenced_message_id: message.reference?.messageId || null,
+          referenced_message_author_id: message.reference ? 
+            (await message.fetchReference()).author.id : null
+        }
+
+        await supabase
+          .from('messages')
+          .upsert(messageData, {
+            onConflict: 'id'
+          })
+
+        console.log('✅ Message stored:', messageData.id)
+      } catch (error) {
+        console.error('❌ Error storing message:', error)
+      }
+    })
   } catch (error) {
     console.error('Failed to initialize Discord bot:', error)
     throw error
@@ -88,6 +128,8 @@ export async function getDiscordClient(walletAddress?: string) {
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildMembers,
+      GatewayIntentBits.DirectMessages
     ]
   })
   await client.login(assignment.discord_bots.bot_token)
@@ -199,23 +241,26 @@ export async function getChannels(serverId: string) {
 
 export async function getChannelMessages(channelId: string): Promise<AppMessage[]> {
   try {
+    console.log('🔍 Fetching messages for channel:', channelId)
+    
     if (!client) {
       client = await getDiscordClient()
     }
 
     const channel = await client.channels.fetch(channelId) as TextChannel
     const discordMessages = await channel.messages.fetch({ limit: 50 })
+    console.log(`📨 Found ${discordMessages.size} messages`)
 
     // Store messages in Supabase
     const messagesToUpsert = Array.from(discordMessages.values()).map(msg => ({
       id: msg.id,
       channel_id: channelId,
       content: msg.content,
-      author_id: msg.author.id,
-      author_username: msg.author.username,
-      timestamp: msg.createdAt.toISOString()
+      sender_id: msg.author.id,
+      sent_at: msg.createdAt.toISOString()
     }))
 
+    console.log('💾 Upserting messages to Supabase:', messagesToUpsert.length)
     const { error } = await supabase
       .from('messages')
       .upsert(messagesToUpsert, {
@@ -223,7 +268,9 @@ export async function getChannelMessages(channelId: string): Promise<AppMessage[
       })
 
     if (error) {
-      console.error('Error storing messages:', error)
+      console.error('❌ Error storing messages:', error)
+    } else {
+      console.log('✅ Messages stored successfully')
     }
 
     // Transform Discord messages to our app format
