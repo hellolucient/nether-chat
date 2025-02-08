@@ -3,6 +3,17 @@ import { getDiscordClient } from '@/lib/discord'
 import { supabase } from '@/lib/supabase'
 import { TextChannel } from 'discord.js'
 
+// Add these types at the top of the file
+interface DiscordBot {
+  bot_name: string
+  bot_id: string
+}
+
+interface BotAssignment {
+  channel_access: string[]
+  discord_bots: DiscordBot
+}
+
 // Add type for messages
 interface DBMessage {
   id: string
@@ -19,7 +30,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'No wallet address provided' }, { status: 400 })
     }
 
-    // Get user's bot info
+    // Add type annotation to the query result
     const { data: botAssignment } = await supabase
       .from('bot_assignments')
       .select(`
@@ -30,7 +41,7 @@ export async function GET(request: Request) {
         )
       `)
       .eq('wallet_address', wallet)
-      .single()
+      .single() as { data: BotAssignment | null }
 
     if (!botAssignment?.discord_bots) {
       return NextResponse.json({ unreadChannels: [] })
