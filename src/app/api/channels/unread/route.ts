@@ -24,7 +24,7 @@ export async function GET(request: Request) {
       .from('bot_assignments')
       .select(`
         channel_access,
-        discord_bots (
+        discord_bots!inner (
           bot_name,
           bot_id
         )
@@ -36,6 +36,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ unreadChannels: [] })
     }
 
+    // Now discord_bots will be a single object, not an array
     const botId = botAssignment.discord_bots.bot_id
     const botName = botAssignment.discord_bots.bot_name
 
