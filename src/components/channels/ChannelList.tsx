@@ -1,6 +1,12 @@
 import React, { useState } from 'react'
 import { useUnread } from '../../contexts/UnreadContext'
-import { Channel } from '../../types/Channel'
+
+// Add interface directly
+interface Channel {
+  id: string
+  name: string
+  unread?: boolean
+}
 
 function ChannelItem({ channel, selected }: { channel: Channel; selected: boolean }) {
   const { unreadChannels } = useUnread()
