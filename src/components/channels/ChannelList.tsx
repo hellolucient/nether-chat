@@ -10,7 +10,7 @@ interface Channel {
 
 function ChannelItem({ channel, selected }: { channel: Channel; selected: boolean }) {
   const { unreadChannels } = useUnread()
-  const isUnread = unreadChannels.includes(channel.id)
+  const isUnread = unreadChannels.has(channel.id)
 
   return (
     <div className={`flex items-center justify-between px-2 py-1 rounded ${
