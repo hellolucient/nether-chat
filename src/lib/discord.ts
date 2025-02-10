@@ -57,64 +57,119 @@ export async function initializeDiscordBot() {
           GatewayIntentBits.DirectMessages
         ]
       })
+
+      // Move event handlers inside client creation
+      client.once('ready', () => {
+        // We know client exists here since we just created it
+        console.log('🎉 Bot is ready! Logged in as:', client!.user?.tag)
+        console.log('🔍 Watching for mentions/replies to bots from discord_bots table')
+        
+        // Add more detailed logging here
+        supabase
+          .from('discord_bots')
+          .select('*')  // Select all columns to see full data
+          .then(({ data: bots, error }) => {
+            if (error) {
+              console.error('❌ Error fetching bots:', error)
+              return
+            }
+            console.log('📊 Full bot data:', JSON.stringify(bots, null, 2))
+            
+            // Test string conversion
+            const botsWithParsedIds = bots?.map(bot => ({
+              name: bot.bot_name,
+              rawId: bot.discord_id,
+              asString: String(bot.discord_id),
+              rawType: typeof bot.discord_id
+            }))
+            console.log('🔍 Parsed bot IDs:', botsWithParsedIds)
+          })
+      })
+
+      client.on('messageCreate', async (message) => {
+        // Add this at the very start of the handler
+        console.log('📨 RAW MESSAGE RECEIVED:', {
+          content: message.content,
+          mentions: message.mentions.users.map(u => u.id),
+          author: message.author.username,
+          isBot: message.author.bot,
+          channelId: message.channelId,
+          timestamp: message.createdAt
+        })
+
+        try {
+          const { data: bots } = await supabase
+            .from('discord_bots')
+            .select('discord_id, bot_name')
+
+          if (!bots) {
+            console.error('❌ No bots found in database')
+            return
+          }
+
+          // Add debug logging
+          console.log('🔍 Message check:', {
+            messageId: message.id,
+            mentions: message.mentions.users.map(u => ({id: u.id, name: u.username})),
+            reference: message.reference,
+            bots: bots.map(b => ({name: b.bot_name, id: b.discord_id}))
+          })
+
+          const mentionsOurBot = message.mentions.users.some(user => 
+            bots.some(bot => bot.discord_id === user.id)
+          )
+
+          const repliedToOurBot = message.reference && 
+            bots.some(bot => bot.discord_id === message.reference?.messageId)
+
+          // Only process if it mentions or replies to our bots
+          if (!mentionsOurBot && !repliedToOurBot) {
+            return
+          }
+
+          console.log('🎯 Relevant message found:', {
+            id: message.id,
+            content: message.content,
+            author: message.author.username,
+            mentions: message.mentions.users.map(u => u.id),
+            isReply: !!message.reference,
+            matchedBots: bots.filter(bot => 
+              message.mentions.users.some(u => u.id === bot.discord_id) ||
+              message.reference?.messageId === bot.discord_id
+            ).map(b => b.bot_name)
+          })
+
+          // Store message in Supabase
+          const messageData = {
+            id: message.id,
+            channel_id: message.channelId,
+            sender_id: message.author.id,
+            content: message.content,
+            sent_at: message.createdAt.toISOString(),
+            referenced_message_id: message.reference?.messageId || null,
+            referenced_message_author_id: message.reference ? 
+              (await message.fetchReference()).author.id : null
+          }
+
+          await supabase
+            .from('messages')
+            .upsert(messageData, {
+              onConflict: 'id'
+            })
+
+          console.log('✅ Message stored:', messageData.id)
+        } catch (error) {
+          console.error('❌ Error processing message:', error)
+        }
+      })
     }
 
     await client.login(process.env.DISCORD_LISTENER_BOT_TOKEN)
     console.log('✅ Bot logged in successfully')
 
-    // Add ready event listener
-    client.once('ready', () => {
-      console.log('🎉 Bot is ready and listening for messages!')
-    })
-
-    client.on('messageCreate', async (message) => {
-      console.log('📨 RAW MESSAGE RECEIVED:', {
-        content: message.content,
-        author: message.author.username,
-        channel: message.channelId
-      })
-      try {
-        // Get the current client user ID
-        const botId = client?.user?.id
-        if (!botId) return // Exit if no bot ID
-
-        // Don't process messages from our own bot
-        if (message.author.id === botId) return
-
-        console.log('📨 New Discord message:', {
-          id: message.id,
-          channel: message.channelId,
-          author: message.author.username,
-          isReply: !!message.reference,
-          content: message.content.substring(0, 50),
-          mentions: message.mentions.users.map(u => u.id)
-        })
-
-        // Store message in Supabase
-        const messageData = {
-          id: message.id,
-          channel_id: message.channelId,
-          sender_id: message.author.id,
-          content: message.content,
-          sent_at: message.createdAt.toISOString(),
-          referenced_message_id: message.reference?.messageId || null,
-          referenced_message_author_id: message.reference ? 
-            (await message.fetchReference()).author.id : null
-        }
-
-        await supabase
-          .from('messages')
-          .upsert(messageData, {
-            onConflict: 'id'
-          })
-
-        console.log('✅ Message stored:', messageData.id)
-      } catch (error) {
-        console.error('❌ Error storing message:', error)
-      }
-    })
+    return client
   } catch (error) {
-    console.error('Failed to initialize Discord bot:', error)
+    console.error('❌ Error initializing Discord bot:', error)
     throw error
   }
 }

@@ -35,8 +35,24 @@ export function MessageInput({ onSendMessage, onRefresh }: MessageInputProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="...">
-      {/* Your existing form JSX */}
+    <form onSubmit={handleSubmit} className="p-4">
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          className="flex-1 bg-[#262626] rounded px-3 py-2 text-white"
+          placeholder="Type a message..."
+        />
+        <button
+          type="submit"
+          disabled={!content.trim() || !publicKey}
+          className="px-4 py-2 rounded bg-purple-500 hover:bg-purple-600 disabled:opacity-50 
+                   disabled:cursor-not-allowed text-white transition-colors"
+        >
+          Send
+        </button>
+      </div>
     </form>
   )
 } 

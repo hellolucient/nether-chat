@@ -26,6 +26,8 @@ function AppContent() {
     async function fetchChannels() {
       if (!publicKey || !connected) {
         console.log('Wallet status:', { publicKey: publicKey?.toString(), connected })
+        setChannels([])  // Clear channels when wallet disconnects
+        setActiveChannel('')  // Clear active channel
         return
       }
 
@@ -62,9 +64,8 @@ function AppContent() {
           console.log('Setting channels:', channelList)
           setChannels(channelList)
           
-          if (!activeChannel && channelList.length > 0) {
-            setActiveChannel(channelList[0].id)
-          }
+          // Reset to first channel when wallet changes
+          setActiveChannel(channelList[0]?.id || '')
         }
       } catch (err) {
         console.error('Failed to fetch channels:', err)

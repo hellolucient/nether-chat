@@ -202,3 +202,27 @@ In OAuth2 -> URL Generator:
    - Target Wallet (the user's wallet address)
    - Bot Token (the one you copied in step 1)
 4. Click "Assign Bot"
+
+## Message Flow Architecture
+
+The app uses two distinct message flows:
+
+1. **Main Message Flow (Pull-based)**
+   - Fetches messages when user views a channel
+   - Messages are retrieved directly from Discord
+   - Stored in database for persistence
+   - Provides on-demand message history
+
+2. **Notification Flow (Push-based)**
+   - Dedicated Listener Bot watches for:
+     - @mentions of user's bot
+     - Replies to user's bot messages
+   - Immediately stores these messages
+   - Powers the unread notifications system
+   - Helps users track important interactions
+
+This dual approach means:
+- Not all messages need immediate storage
+- Real-time monitoring only for important messages
+- Efficient resource usage
+- Better user experience for finding relevant messages

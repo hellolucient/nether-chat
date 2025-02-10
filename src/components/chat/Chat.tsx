@@ -30,6 +30,18 @@ export function Chat({ channelId }: ChatProps) {
   const [checkingAccess, setCheckingAccess] = useState(true)  // New state
   const [replyTo, setReplyTo] = useState<Message | null>(null)
 
+  // Add ref for message container
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  // Scroll when messages load or change
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
+
   const checkAccess = useCallback(async () => {
     if (!publicKey) return
     
@@ -205,6 +217,7 @@ export function Chat({ channelId }: ChatProps) {
           onRefresh={fetchMessages}
           onReplyTo={setReplyTo}
         />
+        <div ref={messagesEndRef} /> {/* Add scroll anchor */}
       </div>
       <div className="mt-auto border-t border-[#262626]">
         <ChatInput 

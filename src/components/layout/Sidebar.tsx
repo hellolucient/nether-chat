@@ -11,7 +11,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ channels, activeChannel, onSelectChannel }: SidebarProps) {
-  const { checkUnreadChannels, unreadChannels } = useUnread()
+  const { checkUnreadChannels, unreadChannels, clearAllUnread } = useUnread()
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -63,23 +63,44 @@ export function Sidebar({ channels, activeChannel, onSelectChannel }: SidebarPro
     }
   }
 
+  // Add debug logging
+  console.log('🔘 Sidebar buttons:', {
+    hasUnread: unreadChannels.size > 0,
+    unreadChannels: Array.from(unreadChannels),
+    clearAllFn: !!clearAllUnread
+  })
+
   return (
     <div className="w-64 bg-[#1E1E24] border-r border-[#262626] flex flex-col">
       {/* Header */}
       <div className="p-4 border-b border-[#262626] flex justify-between items-center">
         <h2 className="font-semibold text-purple-300">Channels</h2>
-        <button
-          onClick={handleRefresh}
-          className="p-2 rounded-full hover:bg-[#363640] text-purple-400"
-          title="Refresh channels"
-          disabled={isRefreshing}
-        >
-          {isRefreshing ? (
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-500" />
-          ) : (
-            <ArrowPathIcon className="h-5 w-5" />
+        <div className="flex gap-2">
+          {unreadChannels.size > 0 && (
+            <button
+              onClick={() => {
+                console.log('🧹 Clear All clicked')
+                clearAllUnread()
+              }}
+              className="px-3 py-1 rounded bg-[#363640] hover:bg-[#464650] text-purple-400 text-sm"
+              title="Clear all notifications"
+            >
+              Clear All
+            </button>
           )}
-        </button>
+          <button
+            onClick={handleRefresh}
+            className="p-2 rounded-full hover:bg-[#363640] text-purple-400"
+            title="Refresh channels"
+            disabled={isRefreshing}
+          >
+            {isRefreshing ? (
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-500" />
+            ) : (
+              <ArrowPathIcon className="h-5 w-5" />
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Channel List */}
