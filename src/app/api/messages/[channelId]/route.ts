@@ -41,8 +41,7 @@ function transformDiscordMessage(msg: DiscordMessage): Message {
     sticker_items: Array.from(msg.stickers.values()).map(s => ({
       id: s.id,
       name: s.name
-    })),
-    created_at: msg.createdAt.toISOString()
+    }))
   }
 }
 
@@ -138,7 +137,7 @@ export async function GET(
       id: m.id,
       content: m.content.substring(0, 30),
       author: m.author.username,
-      created_at: m.created_at
+      timestamp: m.timestamp
     })))
 
     // Save messages to Supabase with more detailed logging
@@ -147,7 +146,7 @@ export async function GET(
       channel_id: channelId,
       sender_id: msg.author.id,
       content: msg.content,
-      sent_at: msg.created_at
+      sent_at: msg.timestamp
     }))
 
     console.log('💾 Preparing to save messages:', {
