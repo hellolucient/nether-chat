@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
-import type { Message } from '@/types'
+import { Message, MessageContent } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { useUnread } from '@/contexts/UnreadContext'
@@ -11,15 +11,6 @@ import { getChannelMessages } from '@/lib/supabase'
 
 interface ChatProps {
   channelId: string
-}
-
-interface MessageContent {
-  type: string
-  url: string
-  reply?: {
-    messageReference: { messageId: string }
-    quotedContent: string
-  }
 }
 
 export function Chat({ channelId }: ChatProps) {

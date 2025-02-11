@@ -12,25 +12,13 @@ import {
   PhotoIcon,
 } from '@heroicons/react/24/outline'
 import { uploadImage } from '@/lib/storage'
-import type { Message } from '@/types'
+import { Message, MessageContent } from '@/types'
 import { GifPicker } from './GifPicker'
 import { StickerIcon } from './icons/StickerIcon'
 import { StickerPicker } from './StickerPicker'
 
 // First, let's properly define our types at the top
 type SendStatus = 'idle' | 'sending' | 'sent'
-
-interface MessageContent {
-  type: string
-  url?: string  // Make url optional
-  content?: string
-  stickerId?: string
-  reply?: {
-    messageReference: { messageId: string }
-    quotedContent: string
-    author: { username: string }
-  }
-}
 
 interface ChatInputProps {
   channelId: string

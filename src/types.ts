@@ -37,4 +37,39 @@ export interface Channel {
   id: string
   name: string
   unread?: boolean
-} 
+}
+
+export interface ImageMessage {
+  type: 'image'
+  content: string
+  url: string
+  stickerId?: string
+  reply?: {
+    messageReference: { messageId: string }
+    quotedContent: string
+    author: { username: string }
+  }
+}
+
+export interface TextMessage {
+  type: 'text'
+  content: string
+  reply?: {
+    messageReference: { messageId: string }
+    quotedContent: string
+    author: { username: string }
+  }
+}
+
+export interface StickerMessage {
+  type: 'sticker'
+  stickerId: string
+  url: string
+  reply?: {
+    messageReference: { messageId: string }
+    quotedContent: string
+    author: { username: string }
+  }
+}
+
+export type MessageContent = string | ImageMessage | TextMessage | StickerMessage 
