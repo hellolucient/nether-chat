@@ -31,4 +31,10 @@ export interface Message {
     id: string
     name: string
   }>
+}
+
+export interface Channel {
+  id: string
+  name: string
+  unread?: boolean
 } 
