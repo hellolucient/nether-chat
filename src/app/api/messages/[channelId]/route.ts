@@ -17,14 +17,32 @@ type Context = {
   }
 }
 
+// Add type for bot data
+type BotData = {
+  discord_id: string
+  bot_name: string
+}
+
 // Helper function to transform Discord message to our format
-function transformDiscordMessage(msg: DiscordMessage): Message {
+function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message {
+  // Get the member's display name if available, fall back to username
+  const displayName = msg.member?.displayName || msg.author.displayName || msg.author.username
+
+  // Check if message is from/mentions/replies to our bot
+  const isFromBot = bots.some(bot => bot.discord_id === msg.author.id)
+  const mentionsBot = msg.mentions.users.some(user => 
+    bots.some(bot => bot.discord_id === user.id)
+  )
+  const replyingToBot = msg.reference ? 
+    bots.some(bot => bot.discord_id === msg.reference?.messageId) : 
+    false  // Return false instead of null when no reference
+
   return {
     id: msg.id,
     content: msg.content,
     channelId: msg.channelId,
     author: {
-      username: msg.author.username,
+      username: displayName,  // Use display name here
       id: msg.author.id
     },
     timestamp: msg.createdAt.toISOString(),
@@ -41,7 +59,10 @@ function transformDiscordMessage(msg: DiscordMessage): Message {
     sticker_items: Array.from(msg.stickers.values()).map(s => ({
       id: s.id,
       name: s.name
-    }))
+    })),
+    isFromBot,
+    isBotMention: mentionsBot,
+    replyingToBot
   }
 }
 
@@ -119,7 +140,10 @@ export async function GET(
     }
 
     console.log('🔍 Attempting to fetch messages from Discord...')
-    const discordMessages = await channel.messages.fetch({ limit: 50 })
+    const discordMessages = await channel.messages.fetch({ 
+      limit: 50,
+      cache: true  // Only use valid options
+    })
     console.log('📨 Got messages from Discord:', {
       count: discordMessages.size,
       first: discordMessages.first()?.content.substring(0, 30),
@@ -130,9 +154,23 @@ export async function GET(
       }
     })
 
+    // After fetching from Discord
+    console.log('👤 Raw Discord usernames:', {
+      messages: discordMessages.map(m => ({
+        id: m.id,
+        username: m.author.username,
+        content: m.content.substring(0, 30)
+      }))
+    })
+
+    // Get bots list
+    const { data: bots } = await supabase
+      .from('discord_bots')
+      .select('discord_id, bot_name')
+
     const messageArray = Array.from(discordMessages.values())
       .reverse()
-      .map(transformDiscordMessage)
+      .map(msg => transformDiscordMessage(msg, bots || []))
     console.log('🔄 Transformed messages:', messageArray.map(m => ({
       id: m.id,
       content: m.content.substring(0, 30),
@@ -140,14 +178,28 @@ export async function GET(
       timestamp: m.timestamp
     })))
 
+    // After transformation
+    console.log('🔄 Author check:', messageArray.map(m => ({
+      id: m.id,
+      username: m.author.username,
+      transformed: true
+    })))
+
     // Save messages to Supabase with more detailed logging
     const messagesToUpsert = messageArray.map(msg => ({
       id: msg.id,
       channel_id: channelId,
       sender_id: msg.author.id,
+      author_username: msg.author.username,  // Change to use display name
       content: msg.content,
       sent_at: msg.timestamp
     }))
+
+    // Before Supabase save
+    console.log('💾 Username check before save:', messagesToUpsert.map(m => ({
+      id: m.id,
+      username: m.author_username
+    })))
 
     console.log('💾 Preparing to save messages:', {
       count: messagesToUpsert.length,

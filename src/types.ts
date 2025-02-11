@@ -8,6 +8,9 @@ export interface Message {
     displayName?: string
   }
   timestamp: string
+  isFromBot?: boolean          // Message from bot
+  isBotMention?: boolean       // @mentions bot
+  replyingToBot?: boolean      // Replying to bot message
   referenced_message_id?: string
   referenced_message_content?: string
   referenced_message_author_id?: string

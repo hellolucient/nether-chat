@@ -117,7 +117,7 @@ export async function initializeDiscordBot() {
           const repliedToOurBot = message.reference && 
             bots.some(bot => bot.discord_id === message.reference?.messageId)
 
-          // Process if it's from our bot OR mentions/replies to our bot
+          // Only process if it mentions or replies to our bots
           if (!isFromOurBot && !mentionsOurBot && !repliedToOurBot) {
             return
           }

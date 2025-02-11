@@ -64,16 +64,12 @@ export function Chat({ channelId }: ChatProps) {
   const fetchMessages = async () => {
     try {
       setLoading(true)
-      console.log('🔄 Chat: Starting fetchMessages for channel:', channelId)
-      const messages = await getChannelMessages(channelId)
-      console.log('📥 Chat: Received messages from Supabase:', messages)
+      const messages = await getChannelMessages(channelId, publicKey?.toString() || '')
       setMessages(messages)
-      console.log('💾 Chat: Messages state updated')
     } catch (error) {
-      console.error('❌ Chat: Error fetching messages:', error)
+      console.error('Failed to load messages:', error)
     } finally {
       setLoading(false)
-      console.log('✅ Chat: Loading state set to false')
     }
   }
 

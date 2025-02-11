@@ -31,40 +31,73 @@ export async function getChannels() {
   return data
 }
 
-export async function getChannelMessages(channelId: string) {
+export async function getChannelMessages(channelId: string, walletAddress: string) {
   console.log('📊 Fetching messages from Supabase for channel:', channelId)
   
   // Calculate timestamp for 48 hours ago
   const fortyEightHoursAgo = new Date()
   fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48)
   
-  const { data, error } = await supabase
+  // First get messages from last 48 hours
+  const { data: recentMessages, error: recentError } = await supabase
     .from('messages')
-    .select(`
-      id,
-      content,
-      channel_id,
-      sender_id,
-      sent_at,
-      author_username,
-      referenced_message_id,
-      referenced_message_content,
-      referenced_message_author_id
-    `)
+    .select('*')
     .eq('channel_id', channelId)
-    .gte('sent_at', fortyEightHoursAgo.toISOString())  // Messages from last 48 hours
+    .gte('sent_at', fortyEightHoursAgo.toISOString())
     .order('sent_at', { ascending: false })
-    .limit(1000)  // Set a high limit, but keep some reasonable bound
 
-  if (error) {
-    console.error('❌ Supabase query error:', error)
-    throw error
+  if (recentError) {
+    console.error('❌ Error fetching recent messages:', recentError)
+    throw recentError
   }
 
-  console.log('📦 Raw data from Supabase:', data)
+  // Also get any bot messages (these are kept forever)
+  const { data: botMessages, error: botError } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('channel_id', channelId)
+    .lt('sent_at', fortyEightHoursAgo.toISOString())
+    .order('sent_at', { ascending: false })
 
-  const transformed = data.map(msg => {
-    const message = {
+  if (botError) {
+    console.error('❌ Error fetching bot messages:', botError)
+    throw botError
+  }
+
+  const allMessages = [...(recentMessages || []), ...(botMessages || [])]
+  console.log('📦 Raw data from Supabase:', allMessages)
+
+  // Get the specific bot for this wallet
+  const { data: userBot } = await supabase
+    .from('bot_assignments')
+    .select('bot_id')
+    .eq('wallet_address', walletAddress)
+    .single()
+
+  // Get bot details
+  const { data: bot } = await supabase
+    .from('discord_bots')
+    .select('discord_id, bot_name')
+    .eq('id', userBot?.bot_id)
+    .single()
+
+  // Transform messages and add bot flags - now only for user's bot
+  const transformed = allMessages.map(msg => {
+    const isBot = bot?.discord_id === msg.sender_id
+    // Check for bot mention using Discord ID format
+    const isBotMention = msg.content.includes(`<@${bot?.discord_id}>`)
+    const replyingToBot = msg.referenced_message_id && 
+      bot?.discord_id === msg.referenced_message_author_id
+
+    console.log('🔍 Message flags:', {
+      content: msg.content,
+      botId: bot?.discord_id,
+      isBotMention,  // This should now be true for messages like <@1336956952546377768>
+      isBot,
+      replyingToBot
+    })
+
+    return {
       id: msg.id,
       content: msg.content,
       channelId: msg.channel_id,
@@ -73,12 +106,13 @@ export async function getChannelMessages(channelId: string) {
         username: msg.author_username || 'Unknown'
       },
       timestamp: msg.sent_at,
+      isFromBot: isBot,
+      isBotMention,
+      replyingToBot,
       referenced_message_id: msg.referenced_message_id,
       referenced_message_content: msg.referenced_message_content,
       referenced_message_author_id: msg.referenced_message_author_id
     }
-    console.log('🔄 Transformed message:', message)
-    return message
   })
 
   return transformed.reverse()

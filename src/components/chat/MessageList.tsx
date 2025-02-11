@@ -153,6 +153,23 @@ const replaceBotMentions = (content: string, botNames: Record<string, string>) =
   })
 }
 
+// Add CSS classes for different message types
+const getMessageClasses = (message: Message) => {
+  const baseClasses = "p-2 rounded-lg mb-2"
+  
+  if (message.isFromBot) {
+    return `${baseClasses} bg-purple-900/50 border border-purple-500/50` // Bot messages - most prominent
+  }
+  if (message.replyingToBot) {
+    return `${baseClasses} bg-purple-900/20` // Replies to bot - subtle background
+  }
+  if (message.isBotMention) {
+    return `${baseClasses} bg-gradient-to-r from-purple-500/20 to-[#1E1E24] border-l-4 border-l-purple-500` // Gradient fade + border
+  }
+  
+  return `${baseClasses} bg-[#1E1E24]` // Regular messages
+}
+
 export function MessageList({ messages, ...props }: MessageListProps) {
   const messageListRef = useRef<HTMLDivElement>(null)
   const [botNames, setBotNames] = useState<Record<string, string>>({})
@@ -220,7 +237,15 @@ export function MessageList({ messages, ...props }: MessageListProps) {
       ) : (
         <div className="space-y-4 p-4">
           {messages.map((message) => (
-            <div key={message.id} className="message group">
+            <div 
+              key={message.id} 
+              className={getMessageClasses(message)}
+              onClick={() => console.log('Message classes:', {
+                content: message.content,
+                isBotMention: message.isBotMention,
+                classes: getMessageClasses(message)
+              })}
+            >
               {/* Author and timestamp */}
               <div className="flex items-center gap-2 mb-1">
                 <span className="font-medium text-purple-300">

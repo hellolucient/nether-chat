@@ -9,6 +9,20 @@ export async function POST(request: Request) {
     const rawBody = await request.text()
     const data = JSON.parse(rawBody)
     
+    // Get bots list first
+    const { data: bots } = await supabase
+      .from('discord_bots')
+      .select('discord_id, bot_name')
+
+    // Check bot-related flags
+    const isFromBot = bots?.some(bot => bot.discord_id === data.author.id)
+    const mentionsBot = data.mentions?.users?.some(user => 
+      bots?.some(bot => bot.discord_id === user.id)
+    )
+    const replyingToBot = data.referenced_message ? 
+      bots?.some(bot => bot.discord_id === data.referenced_message.author.id) :
+      false
+
     // Add debug logging for bot messages
     console.log('📨 Message author details:', {
       id: data.author.id,
@@ -28,7 +42,11 @@ export async function POST(request: Request) {
       // Add reply data if this is a reply
       referenced_message_id: data.referenced_message?.id || null,
       referenced_message_author_id: data.referenced_message?.author?.id?.replace(/[<@>]/g, '') || null,
-      referenced_message_content: data.referenced_message?.content || null
+      referenced_message_content: data.referenced_message?.content || null,
+      // Add bot-related flags
+      is_from_bot: isFromBot,
+      is_bot_mention: mentionsBot,
+      replying_to_bot: replyingToBot
     }
 
     console.log('💾 Storing message:', {
