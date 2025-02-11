@@ -32,15 +32,56 @@ export async function getChannels() {
 }
 
 export async function getChannelMessages(channelId: string) {
+  console.log('📊 Fetching messages from Supabase for channel:', channelId)
+  
+  // Calculate timestamp for 48 hours ago
+  const fortyEightHoursAgo = new Date()
+  fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48)
+  
   const { data, error } = await supabase
     .from('messages')
-    .select('*')
+    .select(`
+      id,
+      content,
+      channel_id,
+      sender_id,
+      sent_at,
+      author_username,
+      referenced_message_id,
+      referenced_message_content,
+      referenced_message_author_id
+    `)
     .eq('channel_id', channelId)
+    .gte('sent_at', fortyEightHoursAgo.toISOString())  // Messages from last 48 hours
     .order('sent_at', { ascending: false })
-    .limit(50)
+    .limit(1000)  // Set a high limit, but keep some reasonable bound
 
-  if (error) throw error
-  return data
+  if (error) {
+    console.error('❌ Supabase query error:', error)
+    throw error
+  }
+
+  console.log('📦 Raw data from Supabase:', data)
+
+  const transformed = data.map(msg => {
+    const message = {
+      id: msg.id,
+      content: msg.content,
+      channelId: msg.channel_id,
+      author: {
+        id: msg.sender_id,
+        username: msg.author_username || 'Unknown'
+      },
+      timestamp: msg.sent_at,
+      referenced_message_id: msg.referenced_message_id,
+      referenced_message_content: msg.referenced_message_content,
+      referenced_message_author_id: msg.referenced_message_author_id
+    }
+    console.log('🔄 Transformed message:', message)
+    return message
+  })
+
+  return transformed.reverse()
 }
 
 // Add this type and function

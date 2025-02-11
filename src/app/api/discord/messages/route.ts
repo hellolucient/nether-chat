@@ -7,32 +7,33 @@ export async function POST(request: Request) {
     console.log('🕒 Time:', new Date().toISOString())
     
     const rawBody = await request.text()
-    console.log('📨 Received Discord webhook:', rawBody)
-    
     const data = JSON.parse(rawBody)
+    
+    // Add debug logging for bot messages
+    console.log('📨 Message author details:', {
+      id: data.author.id,
+      username: data.author.username,
+      isBot: data.author.bot,  // Check if message is from a bot
+      content: data.content
+    })
     
     // Extract all relevant fields including reply data
     const messageData = {
       id: data.id,
       channel_id: data.channel_id,
-      sender_id: data.author.id,
+      sender_id: data.author.id.replace(/[<@>]/g, ''),
+      author_username: data.author.username,  // Make sure we're capturing the username
       content: data.content,
       sent_at: new Date(data.timestamp).toISOString(),
       // Add reply data if this is a reply
       referenced_message_id: data.referenced_message?.id || null,
-      referenced_message_author_id: data.referenced_message?.author?.id || null
+      referenced_message_author_id: data.referenced_message?.author?.id?.replace(/[<@>]/g, '') || null,
+      referenced_message_content: data.referenced_message?.content || null
     }
 
     console.log('💾 Storing message:', {
       ...messageData,
       content: messageData.content.substring(0, 50) // Truncate for logging
-    })
-
-    console.log('📨 Webhook details:', {
-      messageType: data.type,
-      isReply: !!data.referenced_message,
-      replyTo: data.referenced_message?.author?.id,
-      mentions: data.mentions?.map(m => m.id)
     })
 
     // Store in Supabase

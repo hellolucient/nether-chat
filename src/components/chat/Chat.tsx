@@ -7,6 +7,7 @@ import type { Message } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { useUnread } from '@/contexts/UnreadContext'
+import { getChannelMessages } from '@/lib/supabase'
 
 interface ChatProps {
   channelId: string
@@ -68,108 +69,76 @@ export function Chat({ channelId }: ChatProps) {
     console.log('Loading state:', loading)
   }, [channelId, loading])
 
+  // Keep fetchMessages as a separate function for refresh functionality
   const fetchMessages = async () => {
     try {
       setLoading(true)
-      console.log('🔎 Attempting to fetch messages:', {
-        channelId,
-        wallet: publicKey?.toString()
-      })
-      
-      if (!publicKey) {
-        console.log('❌ No wallet connected, skipping fetch')
-        return
-      }
-
-      if (!channelId) {
-        console.log('❌ No channel ID, skipping fetch')
-        return
-      }
-
-      const url = `/api/messages/${channelId}?wallet=${publicKey}`
-      console.log('📡 Making request to:', url)
-
-      const response = await fetch(url)
-      console.log('📥 Got response:', {
-        status: response.status,
-        ok: response.ok
-      })
-
-      if (!response.ok) {
-        const text = await response.text()
-        console.error('❌ Message fetch failed:', {
-          status: response.status,
-          text
-        })
-        return
-      }
-
-      const data = await response.json()
-      console.log('✅ Got messages:', {
-        count: data.messages?.length
-      })
-      setMessages(data.messages)
+      console.log('🔄 Chat: Starting fetchMessages for channel:', channelId)
+      const messages = await getChannelMessages(channelId)
+      console.log('📥 Chat: Received messages from Supabase:', messages)
+      setMessages(messages)
+      console.log('💾 Chat: Messages state updated')
     } catch (error) {
-      console.error('❌ Error in fetchMessages:', error)
+      console.error('❌ Chat: Error fetching messages:', error)
     } finally {
       setLoading(false)
+      console.log('✅ Chat: Loading state set to false')
     }
   }
 
-  // Update the effect to only call fetchMessages
+  // Use fetchMessages in the loadChannel function
   useEffect(() => {
-    if (channelId && publicKey) {
-      fetchMessages()
-    }
-  }, [channelId, publicKey])
-
-  // Mark channel as read when viewing
-  useEffect(() => {
-    if (channelId && document.hasFocus()) {
-      markChannelAsRead(channelId)
-    }
-
-    const handleFocus = () => {
-      if (channelId) {
+    if (!channelId || !publicKey) return
+    
+    const loadChannel = async () => {
+      setLoading(true)
+      // Clear messages immediately when switching channels
+      setMessages([])
+      
+      try {
+        await fetchMessages()
         markChannelAsRead(channelId)
+      } catch (error) {
+        console.error('Failed to load channel:', error)
       }
     }
 
-    window.addEventListener('focus', handleFocus)
-    return () => window.removeEventListener('focus', handleFocus)
-  }, [channelId, markChannelAsRead])
+    loadChannel()
+  }, [channelId, publicKey])
 
   const handleSendMessage = async (content: string | MessageContent) => {
-    if (!channelId) return
+    if (!channelId || !publicKey) return
 
     try {
-      console.log('📨 Chat: Sending message...')
-      
+      // Send the message first
       const response = await fetch(`/api/messages/${channelId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-wallet-address': publicKey.toString()
         },
-        body: JSON.stringify(typeof content === 'object' ? content : { content, type: 'text' }),
+        body: JSON.stringify(
+          typeof content === 'string' 
+            ? { content, type: 'text' } 
+            : content
+        ),
       })
 
       if (!response.ok) {
+        const error = await response.text()
+        console.error('❌ Message send failed:', error)
         throw new Error('Failed to send message')
       }
 
-      // Add delay to allow Discord to process
-      console.log('Waiting for Discord to process...')
-      await new Promise(resolve => setTimeout(resolve, 1500))
-
-      // Force refresh messages after delay
-      console.log('Refreshing messages...')
+      // Small delay before refreshing messages
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // Refresh without loading state
       await fetchMessages()
-      console.log('Messages refreshed')
-
-      // After sending, check for new messages in other channels
       await checkUnreadChannels()
     } catch (error) {
       console.error('❌ Chat: Error sending message:', error)
+      throw error
     }
   }
 
@@ -209,7 +178,8 @@ export function Chat({ channelId }: ChatProps) {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-1 min-h-0">
+      {/* Messages container - add relative positioning */}
+      <div className="flex-1 min-h-0 relative overflow-hidden">
         <MessageList 
           messages={messages} 
           loading={loading}
@@ -217,8 +187,9 @@ export function Chat({ channelId }: ChatProps) {
           onRefresh={fetchMessages}
           onReplyTo={setReplyTo}
         />
-        <div ref={messagesEndRef} /> {/* Add scroll anchor */}
       </div>
+      
+      {/* Input always at bottom */}
       <div className="mt-auto border-t border-[#262626]">
         <ChatInput 
           channelId={channelId}

@@ -17,15 +17,18 @@ import { GifPicker } from './GifPicker'
 import { StickerIcon } from './icons/StickerIcon'
 import { StickerPicker } from './StickerPicker'
 
-// Update MessageContent interface to include content
+// First, let's properly define our types at the top
+type SendStatus = 'idle' | 'sending' | 'sent'
+
 interface MessageContent {
   type: string
-  url: string
+  url?: string  // Make url optional
   content?: string
   stickerId?: string
   reply?: {
     messageReference: { messageId: string }
     quotedContent: string
+    author: { username: string }
   }
 }
 
@@ -57,7 +60,7 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
   const [searchGif, setSearchGif] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [sendStatus, setSendStatus] = useState<'idle' | 'sending' | 'sent'>('idle')
+  const [sendStatus, setSendStatus] = useState<SendStatus>('idle')
   const [showStickerPicker, setShowStickerPicker] = useState(false)
   const [selectedSticker, setSelectedSticker] = useState<{id: string, url: string} | null>(null)
 
@@ -139,73 +142,61 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
     
     setSendStatus('sending')
     try {
-      // Prepare message content based on type
-      let messageContent: MessageContent = {
-        type: 'text',
-        content: message,
-        url: ''
-      }
+      let messageContent: string | MessageContent
 
-      // Handle different message types
-      if (selectedSticker) {
+      if (selectedImage) {
+        const imageUrl = await uploadImage(selectedImage)
+        messageContent = {
+          type: 'image',
+          url: imageUrl,
+          content: message,
+          reply: replyTo ? {
+            messageReference: { messageId: replyTo.id },
+            quotedContent: replyTo.content,
+            author: replyTo.author
+          } : undefined
+        }
+      } else if (selectedSticker) {
         messageContent = {
           type: 'sticker',
-          content: '',
+          stickerId: selectedSticker.id,
           url: selectedSticker.url,
-          stickerId: selectedSticker.id
+          reply: replyTo ? {
+            messageReference: { messageId: replyTo.id },
+            quotedContent: replyTo.content,
+            author: replyTo.author
+          } : undefined
         }
-      } else if (isGifUrl(message)) {
-        messageContent = {
-          type: 'gif',
-          content: '',
-          url: message.trim()
-        }
+      } else {
+        messageContent = replyTo ? {
+          type: 'text',
+          content: message,
+          reply: {
+            messageReference: { messageId: replyTo.id },
+            quotedContent: replyTo.content,
+            author: replyTo.author
+          }
+        } : message
       }
 
-      // Add reply if exists
-      if (replyTo) {
-        messageContent.reply = {
-          messageReference: { messageId: replyTo.id },
-          quotedContent: `> ${replyTo.author.username}: ${replyTo.content}\n`
-        }
-      }
-
-      const response = await fetch(`/api/messages/${channelId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-wallet-address': publicKey?.toString() || ''
-        },
-        body: JSON.stringify(messageContent)
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        console.error('❌ Failed to send message:', error)
-        throw new Error(error.error || 'Failed to send message')
-      }
-
-      console.log('✅ Message sent successfully')
-      setSendStatus('sent')
+      // Send message and wait for it to complete
+      await onSendMessage(messageContent)
+      
+      // Clear inputs
       setMessage('')
       setSelectedImage(null)
       setSelectedSticker(null)
 
-      // Clear reply if there was one
       if (replyTo && onCancelReply) {
         onCancelReply()
       }
 
-      // Add delay and refresh
-      console.log('Waiting for Discord to process...')
-      await new Promise(resolve => setTimeout(resolve, 1500))
+      // Show "Sent!" state
+      setSendStatus('sent')
       
-      console.log('Refreshing messages...')
-      await onRefreshMessages()
-      console.log('Messages refreshed')
-
-      // Wait before resetting send status
-      setTimeout(() => setSendStatus('idle'), 2000)
+      // Add delay before returning to idle
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      setSendStatus('idle')
     } catch (error) {
       console.error('❌ Error sending message:', error)
       setSendStatus('idle')
@@ -241,48 +232,30 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
     return isGif
   }
 
-  // Helper function to render the send button based on status
-  const renderSendButton = () => {
-    console.log('🎨 Rendering send button. Current status:', sendStatus)
-    
-    switch (sendStatus) {
-      case 'sending':
-        console.log('📤 Rendering sending state')
-        return (
-          <button
-            type="submit"
-            disabled
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center justify-center w-20"
-          >
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-          </button>
-        )
-      case 'sent':
-        console.log('✨ Rendering sent state')
-        return (
-          <button
-            type="submit"
-            disabled
-            className="px-4 py-2 bg-pink-400 text-white rounded-lg w-20 transition-colors duration-200 hover:bg-pink-400"
-          >
-            Sent!
-          </button>
-        )
-      default:
-        console.log('⚪️ Rendering idle state')
-        return (
-          <button
-            type="submit"
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed w-20"
-            disabled={(!message.trim() && !selectedImage && !selectedSticker) || sendStatus !== 'idle'}
-          >
-            Send
-          </button>
-        )
-    }
-  }
+  const buttonClassName = `px-4 py-2 rounded font-medium bg-purple-600 hover:bg-purple-700 transition-all duration-200
+    ${sendStatus === 'sending' 
+      ? 'opacity-50 cursor-not-allowed' 
+      : sendStatus === 'sent'
+      ? 'text-[#00FF00]'
+      : 'text-white'
+    }`
 
-  // Add handler for sticker selection
+  const renderSendButton = () => (
+    <button
+      type="submit"
+      disabled={!message.trim() && !selectedImage && !selectedSticker}
+      className={buttonClassName}
+    >
+      {sendStatus === 'sending' ? (
+        <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+      ) : sendStatus === 'sent' ? (
+        'Sent!'
+      ) : (
+        'Send'
+      )}
+    </button>
+  )
+
   const handleStickerSelect = (sticker: { id: string, url: string }) => {
     setSelectedSticker(sticker)
     setShowStickerPicker(false)
@@ -421,16 +394,20 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
           <PhotoIcon className="w-5 h-5" />
         </button>
         {renderSendButton()}
-        {onRefreshMessages && (
-          <button
-            type="button"
-            onClick={onRefreshMessages}
-            className="p-2 text-gray-400 hover:text-purple-300 rounded-lg hover:bg-[#262626]"
-            title="Refresh messages"
-          >
-            <ArrowPathIcon className="h-5 w-5" />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await onRefreshMessages()
+            } catch (error) {
+              console.error('Failed to refresh messages:', error)
+            }
+          }}
+          className="p-2 text-gray-400 hover:text-purple-300 rounded-lg hover:bg-[#262626]"
+          title="Refresh messages"
+        >
+          <ArrowPathIcon className="h-5 w-5" />
+        </button>
       </div>
 
       {/* GIF Picker */}

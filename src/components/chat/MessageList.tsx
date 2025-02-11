@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import { ArrowPathIcon } from '@heroicons/react/24/outline'
 import type { Message } from '@/types'
+import LoadingSpinner from '@/components/LoadingSpinner'
+import { supabase } from '@/lib/supabase'
 
 function formatDiscordMessage(content: string): string {
   // Handle custom emojis <:name:id> or <a:name:id>
@@ -128,126 +130,139 @@ function MessageContent({ message }: { message: Message }) {
   )
 }
 
-interface MessageListProps {
-  messages: Message[]
-  loading: boolean
-  channelId: string
-  onRefresh: () => Promise<void>
-  onReplyTo: (message: Message) => void
+interface BotInfo {
+  discord_id: string
+  bot_name: string
 }
 
-export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo }: MessageListProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const [isInitialLoad, setIsInitialLoad] = useState(true)
-  const [displayMessages, setDisplayMessages] = useState<Message[]>([])
+interface MessageListProps {
+  messages: Message[]
+  channelId: string
+  onRefresh: () => Promise<void>
+  onReplyTo: (message: Message | null) => void
+  loading: boolean
+}
 
-  const scrollToBottom = (behavior: 'auto' | 'smooth' = 'auto') => {
-    setTimeout(() => {
-      const messagesContainer = messagesEndRef.current?.parentElement
-      if (messagesContainer) {
-        messagesContainer.scrollTop = messagesContainer.scrollHeight + 100
-      }
-    }, 100)
-  }
+// Helper function to clean Discord IDs
+const cleanDiscordId = (id: string) => id.replace(/[<@>]/g, '')
 
-  // Keep and enhance the original effect
-  useEffect(() => {
-    if (messages?.length > 0) {
-      scrollToBottom(isInitialLoad ? 'auto' : 'smooth')
-      if (isInitialLoad) {
-        setIsInitialLoad(false)
-      }
-    }
-  }, [messages, isInitialLoad])
-
-  // Reset initial load state when channel changes
-  useEffect(() => {
-    setIsInitialLoad(true)
-  }, [channelId])
-
-  // Use a useEffect to smoothly transition messages
-  useEffect(() => {
-    if (loading) {
-      // Don't update messages while loading
-      return
-    }
-    
-    // Update messages with a slight delay to prevent flash
-    const timer = setTimeout(() => {
-      setDisplayMessages(messages)
-    }, 100)
-
-    return () => clearTimeout(timer)
-  }, [messages, loading])
-
-  const handleRefresh = async () => {
-    try {
-      await onRefresh()
-    } catch (error) {
-      console.error('Failed to refresh messages:', error)
-    }
-  }
-
-  console.log('🎯 MessageList: Rendering with:', {
-    messageCount: messages?.length || 0,
-    loading,
-    channelId,
-    hasRefresh: !!onRefresh,
-    firstMessage: messages?.[0]
+// Helper function to replace bot IDs with names in message content
+const replaceBotMentions = (content: string, botNames: Record<string, string>) => {
+  return content.replace(/<@(\d+)>/g, (match, id) => {
+    return `@${botNames[id] || id}`
   })
+}
 
-  if (loading) {
-    console.log('⏳ MessageList: Showing loading state')
-    return <div className="flex items-center justify-center h-full">
-      <div className="animate-pulse">Loading messages...</div>
-    </div>
+export function MessageList({ messages, ...props }: MessageListProps) {
+  const messageListRef = useRef<HTMLDivElement>(null)
+  const [botNames, setBotNames] = useState<Record<string, string>>({})
+  
+  // Add debug logging for messages and bot names
+  useEffect(() => {
+    console.log('🔄 MessageList: Messages updated:', messages.map(m => ({
+      id: m.id,
+      content: m.content?.substring(0, 50), // Truncate long content
+      author: m.author.username,
+      hasReference: !!m.referenced_message_id,
+      referenceId: m.referenced_message_id,
+      referenceContent: m.referenced_message_content?.substring(0, 50),
+      referenceAuthor: m.referenced_message_author_id
+    })))
+  }, [messages])
+
+  useEffect(() => {
+    console.log('👤 MessageList: Bot names updated:', botNames)
+  }, [botNames])
+
+  // Get bot names once when component mounts
+  useEffect(() => {
+    const getBotNames = async () => {
+      const { data } = await supabase
+        .from('discord_bots')
+        .select('discord_id, bot_name')
+      
+      if (data) {
+        const nameMap = Object.fromEntries(
+          data.map(bot => [bot.discord_id, bot.bot_name])
+        )
+        setBotNames(nameMap)
+      }
+    }
+    getBotNames()
+  }, [])
+
+  // Scroll to bottom when messages change
+  const scrollToBottom = () => {
+    const messageList = messageListRef.current
+    if (messageList) {
+      messageList.scrollTop = messageList.scrollHeight
+    }
   }
 
-  if (!messages || messages.length === 0) {
-    console.log('⚠️ MessageList: No messages to display')
-    return (
-      <div className="flex flex-col flex-1">
-        <div className="p-4 text-center text-gray-400">
-          No messages in the last 48 hours
-        </div>
-      </div>
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, props.channelId])
+
+  useEffect(() => {
+    console.log('🔄 MessageList: Received new messages:', messages)
+    console.log('🔍 MessageList: First message details:', messages[0])
+    console.log('📊 MessageList: Messages with references:', 
+      messages.filter(m => m.referenced_message_id)
     )
-  }
+  }, [messages])
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header - simplified */}
-      <div className="p-4 border-b border-[#262626]">
-        <h2 className="font-semibold text-purple-300">Messages</h2>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4">
-        {displayMessages.map((message) => (
-          <div key={message.id} className="flex gap-2 group">
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
+    <div ref={messageListRef} className="message-list h-full overflow-y-auto relative">
+      {props.loading ? (
+        <div className="absolute inset-0 flex justify-center items-center bg-black/50">
+          <LoadingSpinner />
+        </div>
+      ) : (
+        <div className="space-y-4 p-4">
+          {messages.map((message) => (
+            <div key={message.id} className="message group">
+              {/* Author and timestamp */}
+              <div className="flex items-center gap-2 mb-1">
                 <span className="font-medium text-purple-300">
-                  {message.author.username}
+                  {message.author.displayName || message.author.username}
                 </span>
                 <span className="text-xs text-gray-400">
                   {new Date(message.timestamp).toLocaleString()}
                 </span>
                 <button
-                  onClick={() => onReplyTo(message)}
+                  onClick={() => props.onReplyTo(message)}
                   className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-purple-300 text-sm"
                 >
                   Reply
                 </button>
               </div>
-              <MessageContent message={message} />
+
+              {/* Show referenced message if it exists */}
+              {message.referenced_message_id && (
+                <div className="mb-2 pl-4 border-l-2 border-[#363640]">
+                  <div className="text-gray-400 text-sm">
+                    <span className="text-purple-300">
+                      {message.referenced_message_author_id && botNames[message.referenced_message_author_id] 
+                        ? botNames[message.referenced_message_author_id] 
+                        : "Unknown"}
+                    </span>
+                    <div className="text-gray-300 mt-1">
+                      {message.referenced_message_content || "Message not found"}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Current message content */}
+              <div className="text-gray-300">
+                {replaceBotMentions(message.content, botNames).split('\n').map((line, i) => (
+                  <div key={i}>{line}</div>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-        
-        {/* Add this invisible div at the bottom */}
-        <div ref={messagesEndRef} />
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 } 

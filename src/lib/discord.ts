@@ -87,43 +87,38 @@ export async function initializeDiscordBot() {
       })
 
       client.on('messageCreate', async (message) => {
-        // Add this at the very start of the handler
-        console.log('📨 RAW MESSAGE RECEIVED:', {
+        console.log('📨 Message listener triggered:', {
+          id: message.id,
           content: message.content,
-          mentions: message.mentions.users.map(u => u.id),
-          author: message.author.username,
-          isBot: message.author.bot,
-          channelId: message.channelId,
-          timestamp: message.createdAt
+          authorId: message.author.id,
+          channelId: message.channelId
         })
 
         try {
-          const { data: bots } = await supabase
+          const { data: bots, error: botsError } = await supabase
             .from('discord_bots')
             .select('discord_id, bot_name')
+
+          console.log('🤖 Bots lookup:', {
+            bots,
+            error: botsError
+          })
 
           if (!bots) {
             console.error('❌ No bots found in database')
             return
           }
 
-          // Add debug logging
-          console.log('🔍 Message check:', {
-            messageId: message.id,
-            mentions: message.mentions.users.map(u => ({id: u.id, name: u.username})),
-            reference: message.reference,
-            bots: bots.map(b => ({name: b.bot_name, id: b.discord_id}))
-          })
-
+          // Check if message is from our bot, mentions our bot, or replies to our bot
+          const isFromOurBot = bots.some(bot => bot.discord_id === message.author.id)
           const mentionsOurBot = message.mentions.users.some(user => 
             bots.some(bot => bot.discord_id === user.id)
           )
-
           const repliedToOurBot = message.reference && 
             bots.some(bot => bot.discord_id === message.reference?.messageId)
 
-          // Only process if it mentions or replies to our bots
-          if (!mentionsOurBot && !repliedToOurBot) {
+          // Process if it's from our bot OR mentions/replies to our bot
+          if (!isFromOurBot && !mentionsOurBot && !repliedToOurBot) {
             return
           }
 
@@ -139,25 +134,38 @@ export async function initializeDiscordBot() {
             ).map(b => b.bot_name)
           })
 
+          // Get bot name if message is from one of our bots
+          const botName = bots?.find(b => b.discord_id === message.author.id)?.bot_name
+
           // Store message in Supabase
           const messageData = {
             id: message.id,
             channel_id: message.channelId,
             sender_id: message.author.id,
+            author_username: message.author.username,
             content: message.content,
             sent_at: message.createdAt.toISOString(),
             referenced_message_id: message.reference?.messageId || null,
             referenced_message_author_id: message.reference ? 
-              (await message.fetchReference()).author.id : null
+              (await message.fetchReference()).author.id : null,
+            referenced_message_content: message.reference ? 
+              (await message.fetchReference()).content : null
           }
 
-          await supabase
+          console.log('📝 Attempting to store message:', messageData)
+
+          const { data, error } = await supabase
             .from('messages')
             .upsert(messageData, {
               onConflict: 'id'
             })
 
-          console.log('✅ Message stored:', messageData.id)
+          if (error) {
+            console.error('❌ Supabase error:', error)
+            throw error
+          }
+
+          console.log('✅ Supabase response:', { data, error })
         } catch (error) {
           console.error('❌ Error processing message:', error)
         }
@@ -259,7 +267,7 @@ export async function sendMessage(
       ...options
     })
 
-    // Store the sent message in Supabase
+    // Store in regular messages table
     const { error } = await supabase
       .from('messages')
       .insert({
@@ -321,17 +329,25 @@ export async function getChannelMessages(channelId: string): Promise<AppMessage[
     }
 
     const channel = await client.channels.fetch(channelId) as TextChannel
-    const discordMessages = await channel.messages.fetch({ limit: 50 })
+    const discordMessages = await channel.messages.fetch()
     console.log(`📨 Found ${discordMessages.size} messages`)
 
     // Store messages in Supabase
-    const messagesToUpsert = Array.from(discordMessages.values()).map(msg => ({
-      id: msg.id,
-      channel_id: channelId,
-      content: msg.content,
-      sender_id: msg.author.id,
-      sent_at: msg.createdAt.toISOString()
-    }))
+    const messagesToUpsert = await Promise.all(
+      Array.from(discordMessages.values()).map(async (msg) => ({
+        id: msg.id,
+        channel_id: channelId,
+        sender_id: msg.author.id,
+        author_username: msg.author.username,
+        content: msg.content,
+        sent_at: msg.createdAt.toISOString(),
+        referenced_message_id: msg.reference?.messageId || null,
+        referenced_message_author_id: msg.reference ? 
+          (await msg.fetchReference()).author.id : null,
+        referenced_message_content: msg.reference ? 
+          (await msg.fetchReference()).content : null
+      }))
+    )
 
     console.log('💾 Upserting messages to Supabase:', messagesToUpsert.length)
     const { error } = await supabase
@@ -347,34 +363,72 @@ export async function getChannelMessages(channelId: string): Promise<AppMessage[
     }
 
     // Transform Discord messages to our app format
-    const transformedMessages = Array.from(discordMessages.values()).map(msg => ({
-      id: msg.id,
-      content: msg.content,
-      channelId: msg.channelId,
-      author: {
-        id: msg.author.id,
-        username: msg.author.username
-      },
-      timestamp: msg.createdAt.toISOString(),
-      attachments: Array.from(msg.attachments.values()).map(a => ({
-        url: a.url,
-        content_type: a.contentType || undefined,
-        filename: a.name || 'untitled'
-      })),
-      embeds: msg.embeds.map(e => ({
-        type: e.data.type || 'rich',
-        url: e.url || undefined,
-        thumbnail: e.thumbnail ? { url: e.thumbnail.url } : undefined,
-        image: e.image ? { url: e.image.url } : undefined
-      })),
-      stickers: Array.from(msg.stickers.values()).map(s => ({
-        url: s.format === 3 
-          ? `https://cdn.discordapp.com/stickers/${s.id}.gif`
-          : `https://cdn.discordapp.com/stickers/${s.id}.png`,
-        name: s.name
-      })),
-      created_at: msg.createdAt.toISOString()
-    }))
+    const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000)
+
+    // First get messages from last 48 hours
+    const { data: recentMessages } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('channel_id', channelId)
+      .gte('sent_at', fortyEightHoursAgo.toISOString())
+
+    if (!recentMessages) return []
+
+    // Get all referenced message IDs
+    const referencedIds = recentMessages
+      .filter(msg => msg.referenced_message_id)
+      .map(msg => msg.referenced_message_id)
+      .filter(Boolean)
+
+    // Now get both recent messages AND any referenced messages
+    const { data: messages } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('channel_id', channelId)
+      .or(`sent_at.gte.${fortyEightHoursAgo.toISOString()},id.eq.${referencedIds.join('},id.eq.{')})`)
+      .order('sent_at', { ascending: true })
+
+    if (!messages) return []
+
+    const transformedMessages = messages.map(msg => {
+      console.log('🔄 Transforming message:', {
+        id: msg.id,
+        content: msg.content,
+        ref_id: msg.referenced_message_id,
+        ref_content: msg.referenced_message_content
+      })
+
+      return {
+        id: msg.id,
+        content: msg.content,
+        channelId: msg.channel_id,
+        author: {
+          id: msg.sender_id,
+          username: msg.author_username || 'Unknown',
+          displayName: msg.author_username || 'Unknown'
+        },
+        timestamp: msg.sent_at,
+        referenced_message_id: msg.referenced_message_id || null,
+        referenced_message_author_id: msg.referenced_message_author_id || null,
+        referenced_message_content: msg.referenced_message_content || null,
+        attachments: (msg.attachments || []).map((a: any) => ({
+          url: a.url || '',
+          content_type: a.content_type || undefined,
+          filename: a.filename || 'untitled'
+        })),
+        embeds: (msg.embeds || []).map((e: any) => ({
+          type: e.data?.type || 'rich',
+          url: e.url || undefined,
+          thumbnail: e.thumbnail ? { url: e.url || '' } : undefined,
+          image: e.image ? { url: e.url || '' } : undefined
+        })),
+        stickers: (msg.stickers || []).map((s: any) => ({
+          url: s.url || '',
+          name: s.name || ''
+        })),
+        created_at: msg.sent_at
+      }
+    })
 
     return transformedMessages.reverse()
   } catch (error) {

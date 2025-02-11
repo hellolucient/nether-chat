@@ -10,6 +10,7 @@ interface MessageInputProps {
 
 export function MessageInput({ onSendMessage, onRefresh }: MessageInputProps) {
   const [content, setContent] = useState('')
+  const [isSending, setSending] = useState(false)
   const { publicKey } = useWallet()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -17,20 +18,13 @@ export function MessageInput({ onSendMessage, onRefresh }: MessageInputProps) {
     if (!content.trim() || !publicKey) return
 
     try {
-      console.log('Sending message...')
+      setSending(true)
       await onSendMessage(content)
-      console.log('Message sent, clearing input...')
-      setContent('')  // Clear input immediately
-      
-      // Add a small delay before refreshing to allow Discord to process
-      console.log('Waiting for Discord...')
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      console.log('Refreshing messages...')
-      await onRefresh()  // Refresh after delay
-      console.log('Refresh complete')
+      setContent('')
     } catch (error) {
       console.error('Error sending message:', error)
+    } finally {
+      setSending(false)
     }
   }
 
@@ -46,11 +40,15 @@ export function MessageInput({ onSendMessage, onRefresh }: MessageInputProps) {
         />
         <button
           type="submit"
-          disabled={!content.trim() || !publicKey}
-          className="px-4 py-2 rounded bg-purple-500 hover:bg-purple-600 disabled:opacity-50 
-                   disabled:cursor-not-allowed text-white transition-colors"
+          disabled={!content.trim() || !publicKey || isSending}
+          className={`px-4 py-2 rounded font-medium transition-all duration-200
+            ${isSending 
+              ? 'bg-purple-600 text-white hover:bg-purple-700' // Sent state
+              : 'bg-purple-500 text-white hover:bg-purple-600'  // Normal state
+            } 
+            disabled:opacity-50 disabled:cursor-not-allowed`}
         >
-          Send
+          {isSending ? 'Sent!' : 'Send'}
         </button>
       </div>
     </form>
