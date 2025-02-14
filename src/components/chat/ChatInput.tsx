@@ -12,7 +12,7 @@ import {
   PhotoIcon,
 } from '@heroicons/react/24/outline'
 import { uploadImage } from '@/lib/storage'
-import { Message, MessageContent, ImageMessageContent, TextMessageContent, StickerMessageContent } from '@/types'
+import { Message, MessageContent } from '@/types'
 import { GifPicker } from './GifPicker'
 import { StickerIcon } from './icons/StickerIcon'
 import { StickerPicker } from './StickerPicker'
