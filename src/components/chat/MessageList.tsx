@@ -62,30 +62,19 @@ function formatDate(dateString: string) {
 }
 
 function MessageContent({ message }: { message: Message }) {
-  console.log('Message content:', { 
-    message,
-    hasAttachments: !!message.attachments?.length,
-    attachments: message.attachments,
-    embeds: message.embeds,
-    content: message.content
-  })
-
   // If message has attachments (images)
   if (message.attachments?.length) {
     return (
       <div className="mt-1">
-        {message.attachments.map((attachment, index) => {
-          console.log('Rendering attachment:', attachment)
-          return (
-            <div key={`attachment-${index}`} className="max-w-[300px]">
-              <img 
-                src={attachment.url} 
-                alt={attachment.filename || 'Attached image'}
-                className="rounded-lg"
-              />
-            </div>
-          )
-        })}
+        {message.attachments.map((attachment, index) => (
+          <div key={`attachment-${index}`} className="max-w-[300px]">
+            <img 
+              src={attachment.url} 
+              alt={attachment.filename || 'Attached image'}
+              className="rounded-lg"
+            />
+          </div>
+        ))}
       </div>
     )
   }
@@ -107,11 +96,10 @@ function MessageContent({ message }: { message: Message }) {
     )
   }
 
-  // If the message has a GIF/image embed or sticker, show that
+  // If the message has a GIF/image embed or sticker
   if (message.embeds?.some(embed => embed.type === 'gif' || embed.type === 'image') || message.stickers?.length) {
     return (
       <div className="mt-1">
-        {/* Handle embeds (GIFs/images) */}
         {message.embeds?.map((embed, index) => (
           <div key={`embed-${index}`} className="max-w-[300px]">
             <img 
@@ -122,7 +110,6 @@ function MessageContent({ message }: { message: Message }) {
           </div>
         ))}
 
-        {/* Handle stickers */}
         {message.stickers?.map((sticker, index) => (
           <div key={`sticker-${index}`} className="max-w-[200px]">
             <img
@@ -137,7 +124,7 @@ function MessageContent({ message }: { message: Message }) {
     )
   }
 
-  // Otherwise show regular content
+  // Regular text content
   return (
     <div className="text-gray-100 space-y-1">
       {formatMessageWithQuotes(message.content)}
@@ -183,12 +170,39 @@ function getMessageClasses(message: Message): string {
   }
   
   if (message.replyingToBot) {
-    // Messages replying to bots get a subtle purple tint
-    return `${baseClasses} bg-purple-900/20`
+    // Messages replying to bots get a different purple tint
+    return `${baseClasses} bg-purple-800/20`
   }
   
-  // Regular messages get the default dark background
   return `${baseClasses} bg-[#1E1E1E]`
+}
+
+// At the top of the file, add a helper function for bot mentions
+function formatBotMentions(content: string, botNames: Record<string, string>) {
+  // First replace all bot IDs with their names
+  const contentWithNames = replaceBotMentions(content, botNames)
+  
+  // Then find and wrap all @mentions in bold spans
+  return contentWithNames.split(' ').map((word, i, arr) => {
+    if (word.startsWith('@')) {
+      // Check if this is the start of a multi-word bot name
+      let fullName = word.substring(1) // Remove @ symbol
+      let j = i + 1
+      // Keep adding words until we find the full bot name
+      while (j < arr.length && Object.values(botNames).some(name => 
+        name.toLowerCase() === (fullName + ' ' + arr[j]).toLowerCase()
+      )) {
+        fullName += ' ' + arr[j]
+        j++
+      }
+      
+      // If we found a bot name, return it wrapped in a span
+      if (Object.values(botNames).some(name => name.toLowerCase() === fullName.toLowerCase())) {
+        return <span key={i} className="font-bold text-purple-300">@{fullName}</span>
+      }
+    }
+    return <span key={i}>{word} </span>
+  })
 }
 
 export function MessageList({ messages, ...props }: MessageListProps) {
@@ -237,7 +251,7 @@ export function MessageList({ messages, ...props }: MessageListProps) {
   const fetchReferencedAuthor = async (authorId: string) => {
     const { data } = await supabase
       .from('messages')
-      .select('author_username')
+      .select('author_display_name')
       .eq('sender_id', authorId)
       .limit(1)
       .single()
@@ -245,7 +259,7 @@ export function MessageList({ messages, ...props }: MessageListProps) {
     if (data) {
       setReferencedAuthors(prev => ({
         ...prev,
-        [authorId]: data.author_username
+        [authorId]: data.author_display_name
       }))
     }
   }
@@ -322,6 +336,34 @@ export function MessageList({ messages, ...props }: MessageListProps) {
     })))
   }, [messages])
 
+  // Add this near the top of MessageList component
+  useEffect(() => {
+    console.log('Message flags:', messages.map(m => ({
+      content: m.content,
+      isFromBot: m.isFromBot,
+      isBotMention: m.isBotMention,
+      replyingToBot: m.replyingToBot
+    })))
+  }, [messages])
+
+  // Add this near the top of MessageList component
+  useEffect(() => {
+    console.log('🎨 Styling Debug:', messages.map(m => ({
+      content: m.content.substring(0, 50),
+      flags: {
+        isFromBot: m.isFromBot,
+        isBotMention: m.isBotMention,
+        replyingToBot: m.replyingToBot
+      },
+      appliedClass: getMessageClasses({
+        ...m,
+        isFromBot: m.isFromBot,
+        isBotMention: m.isBotMention,
+        replyingToBot: m.replyingToBot
+      })
+    })))
+  }, [messages])
+
   return (
     <div ref={messageListRef} className="message-list h-full overflow-y-auto relative">
       {props.loading ? (
@@ -334,16 +376,58 @@ export function MessageList({ messages, ...props }: MessageListProps) {
             <div 
               key={message.id} 
               className={getMessageClasses(message)}
-              onClick={() => console.log('Message classes:', {
+              onClick={() => console.log('🎨 Message Styling:', {
                 content: message.content,
-                isBotMention: message.isBotMention,
-                classes: getMessageClasses(message)
+                flags: {
+                  isFromBot: message.isFromBot,
+                  isBotMention: message.isBotMention,
+                  replyingToBot: message.replyingToBot
+                },
+                appliedClass: getMessageClasses(message)
               })}
             >
+              {/* Show referenced message if it exists */}
+              {message.referenced_message_id && (
+                <div className="mb-2 pl-4 border-l-2 border-[#363640]">
+                  <div className="text-gray-400 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span>
+                        {/* First show who wrote the referenced message */}
+                        <span className="text-purple-300">
+                          @{message.referenced_message_author_id && (
+                            botNames[message.referenced_message_author_id] || 
+                            referencedAuthors[message.referenced_message_author_id] ||
+                            "Unknown User"
+                          )}
+                        </span>
+                        {' '}
+                        {/* Then show any @mentions in the message content in bold */}
+                        {message.referenced_message_content && 
+                          message.referenced_message_content.split(' ').map((word, i) => {
+                            if (word.startsWith('<@') && word.endsWith('>')) {
+                              const botId = word.slice(2, -1)
+                              const botName = botNames[botId]
+                              return botName ? (
+                                <React.Fragment key={i}>
+                                  <span className="font-bold text-purple-300">@{botName}</span>
+                                  {' '}
+                                </React.Fragment>
+                              ) : word + ' '
+                            }
+                            return word + ' '
+                          })
+                        }
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Author and timestamp */}
               <div className="flex items-center gap-2 mb-1">
                 <span className="font-medium text-purple-300">
-                  {message.author_username}
+                  {message.author_display_name}
+                  {message.isFromBot && <span className="ml-2 text-xs bg-purple-600 px-2 py-0.5 rounded">APP</span>}
                 </span>
                 <span className="text-xs text-gray-400">
                   {formatDate(message.sent_at)}
@@ -355,29 +439,6 @@ export function MessageList({ messages, ...props }: MessageListProps) {
                   Reply
                 </button>
               </div>
-
-              {/* Show referenced message if it exists */}
-              {message.referenced_message_id && message.referenced_message_author_id && (
-                <div className="mb-2 pl-4 border-l-2 border-[#363640]">
-                  <div className="text-gray-400 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-purple-300">
-                        {message.referenced_message_author_id && (
-                          botNames[message.referenced_message_author_id] || 
-                          referencedAuthors[message.referenced_message_author_id] ||
-                          "Unknown User"
-                        )}
-                      </span>
-                      <span className="text-xs text-gray-500">wrote:</span>
-                    </div>
-                    {message.referenced_message_content && (
-                      <div className="text-gray-300 mt-1">
-                        {message.referenced_message_content}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
 
               {/* Current message content */}
               <div className="text-gray-300">

@@ -2,9 +2,10 @@ import {
   Client, 
   GatewayIntentBits, 
   TextChannel, 
-  Message,
+  Message as DiscordMessage,
   BaseGuildTextChannel,
-  Collection
+  Collection,
+  Channel
 } from 'discord.js'
 import { supabase } from '@/lib/supabase'
 import { cleanupOldImages } from '@/lib/storage'
@@ -34,14 +35,15 @@ interface TextMessage {
 
 type MessageContent = string | ImageMessage | TextMessage
 
-const clientCache = new Map<string, Client>()
-
 interface BotAssignment {
   bot_id: string
   discord_bots: {
     bot_token: string
   }
 }
+
+// Add a client cache at the top of the file
+const clientCache = new Map<string, Client>()
 
 export async function initializeDiscordBot() {
   try {
@@ -188,6 +190,12 @@ export { client }
 export async function getDiscordClient(walletAddress?: string) {
   if (!walletAddress) throw new Error('No wallet address provided')
 
+  // Check cache first
+  const cachedClient = clientCache.get(walletAddress)
+  if (cachedClient?.isReady()) {
+    return cachedClient
+  }
+
   // Get user's bot assignment and associated bot token
   const { data: assignment } = await supabase
     .from('bot_assignments')
@@ -215,79 +223,84 @@ export async function getDiscordClient(walletAddress?: string) {
     ]
   })
   await client.login(assignment.discord_bots.bot_token)
+  
+  // Cache the client
+  clientCache.set(walletAddress, client)
+
   return client
 }
 
-// Add a health check function
+// Update or add the checkDiscordConnection function
 export async function checkDiscordConnection() {
   try {
-    const discord = await getDiscordClient()
-    const isReady = discord.isReady()
-    console.log('Discord connection status:', { 
-      isReady,
-      wsStatus: discord.ws.status
-    })
-    return isReady
+    if (!client) {
+      console.log('🔄 Initializing new Discord connection...')
+      client = new Client({
+        intents: [
+          GatewayIntentBits.Guilds,
+          GatewayIntentBits.GuildMessages,
+          GatewayIntentBits.MessageContent,
+          GatewayIntentBits.GuildMembers,
+          GatewayIntentBits.DirectMessages
+        ]
+      })
+
+      await client.login(process.env.DISCORD_BOT_TOKEN)
+      
+      // Wait for ready event
+      await new Promise((resolve) => {
+        if (client?.isReady()) {
+          resolve(true)
+        } else {
+          client?.once('ready', () => resolve(true))
+        }
+      })
+
+      console.log('✅ Discord connection established')
+    }
+
+    return true
   } catch (error) {
-    console.error('Discord connection check failed:', error)
-    // Force new connection on next request
-    client = null
+    console.error('❌ Discord connection failed:', error)
     return false
   }
 }
 
+// Update sendMessage function to require wallet address
 export async function sendMessage(
   channelId: string, 
-  content: string, 
+  content: string,
+  walletAddress: string,
   options?: { 
     messageReference?: { messageId: string },
-    embeds?: Array<{ image: { url: string } }>,
     quotedContent?: string
   }
 ) {
   try {
-    console.log('🚀 Discord: Sending message:', {
-      channelId,
-      contentLength: content?.length,
-      hasEmbed: !!options?.embeds,
-      hasReply: !!options?.messageReference
-    })
-
-    const discord = await getDiscordClient()
+    const discord = await getDiscordClient(walletAddress)
     const channel = await discord.channels.fetch(channelId)
     
     if (!channel?.isTextBased()) {
-      console.error('❌ Discord: Channel not text-based')
-      throw new Error('Channel not found or not a text channel')
+      throw new Error('Channel not found or not text channel')
     }
 
-    // Type assertion since we've verified it's a text channel
     const textChannel = channel as BaseGuildTextChannel
-    const message = await textChannel.send({
-      content: content || undefined, // Don't send empty string
-      ...options
-    })
-
-    // Store in regular messages table
-    const { error } = await supabase
-      .from('messages')
-      .insert({
-        id: message.id,
-        channel_id: channelId,
-        content: message.content,
-        author_id: message.author.id,
-        author_username: message.author.username,
-        timestamp: message.createdAt.toISOString()
-      })
-
-    if (error) {
-      console.error('Error storing sent message:', error)
+    
+    // Properly format the message options for a reply
+    const messageOptions = {
+      content,
+      ...options?.messageReference ? {
+        reply: {
+          messageReference: options.messageReference.messageId,
+          failIfNotExists: false
+        }
+      } : {}
     }
 
-    console.log('✅ Discord: Message sent successfully:', message.id)
+    const message = await textChannel.send(messageOptions)
     return true
   } catch (error) {
-    console.error('❌ Discord: Error sending message:', error)
+    console.error('Error sending message:', error)
     return false
   }
 }
@@ -326,67 +339,88 @@ export async function getChannelMessages(channelId: string): Promise<AppMessage[
   try {
     console.log('🔍 Fetching messages for channel:', channelId)
     
+    // Get bots list first
+    const { data: bots } = await supabase
+      .from('discord_bots')
+      .select('discord_id, bot_name')
+
     // 1. First fetch from Discord
     if (!client) {
-      client = await getDiscordClient()
+      throw new Error('Discord client not initialized')
     }
 
     const channel = await client.channels.fetch(channelId)
-    let discordMessages: Collection<string, Message> | null = null
-    
-    if (channel instanceof TextChannel) {
-      console.log('📥 Fetching messages from Discord...')
-      const fortyEightHoursAgo = new Date()
-      fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48)
-
-      discordMessages = await channel.messages.fetch({ 
-        after: fortyEightHoursAgo.getTime().toString(),
-        cache: false
-      })
-      console.log(`✅ Fetched ${discordMessages.size} messages from Discord`)
+    if (!(channel instanceof TextChannel)) {
+      throw new Error('Channel is not a text channel')
     }
 
+    let discordMessages: Collection<string, DiscordMessage> | null = null
+    
+    console.log('📥 Fetching messages from Discord...')
+    const fortyEightHoursAgo = new Date()
+    fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48)
+
+    discordMessages = await channel.messages.fetch({ 
+      after: fortyEightHoursAgo.getTime().toString(),
+      cache: false
+    })
+    console.log(`✅ Fetched ${discordMessages.size} messages from Discord`)
+
     if (!discordMessages) {
-      console.log('❌ No messages found or channel is not text channel')
+      console.log('❌ No messages found')
       return []
     }
 
-    // 2. Store messages in Supabase for history
-    const messagesToUpsert = Array.from(discordMessages.values()).map(msg => ({
-      id: msg.id,
-      channel_id: channelId,
-      sender_id: msg.author.id,
-      author_username: msg.author.username,
-      content: msg.content,
-      sent_at: msg.createdAt.toISOString(),
-      referenced_message_id: msg.reference?.messageId || null,
-      referenced_message_author_id: msg.reference ? 
-        msg.reference.messageId : null,
-      referenced_message_content: msg.reference ? 
-        msg.content : null
-    }))
+    // Transform Discord messages to our app's Message type
+    const messages = await Promise.all(Array.from(discordMessages.values())
+      .map(async msg => {
+        // Get referenced message author if it exists
+        let referencedAuthorId: string | null = null
+        if (msg.reference?.messageId) {
+          const referencingBot = bots?.find(bot => 
+            msg.reference && bot.discord_id === msg.reference.messageId
+          )
+          referencedAuthorId = referencingBot?.discord_id || null
+        }
 
-    console.log('💾 Storing messages in Supabase...')
-    const { error } = await supabase
-      .from('messages')
-      .upsert(messagesToUpsert)
+        // Get referenced message content
+        let referencedContent: string | null = null
+        if (msg.reference?.messageId) {
+          try {
+            const referencedMsg = await channel.messages.fetch(msg.reference.messageId)
+            referencedContent = referencedMsg.content
+          } catch (error) {
+            console.warn('Could not fetch referenced message:', error)
+            referencedContent = null
+          }
+        }
 
-    if (error) {
-      console.error('❌ Error storing messages:', error)
-    }
+        const transformedMessage: AppMessage = {
+          id: msg.id,
+          content: msg.content,
+          channel_id: msg.channelId,
+          sender_id: msg.author.id,
+          author_username: msg.member?.displayName || msg.author.displayName || msg.author.username,
+          sent_at: msg.createdAt.toISOString(),
+          referenced_message_id: msg.reference?.messageId || null,
+          referenced_message_author_id: referencedAuthorId,
+          referenced_message_content: referencedContent,
+          stickers: [],
+          attachments: [],
+          embeds: [],
+          sticker_items: [],
+          isFromBot: msg.author.bot,
+          isBotMention: msg.mentions.users.some(user => 
+            bots.some(bot => bot.discord_id === user.id)
+          ),
+          replyingToBot: msg.reference && 
+            bots.some(bot => bot.discord_id === msg.reference.messageId)
+        }
 
-    // 3. Return the Discord messages directly
-    return Array.from(discordMessages.values()).map(msg => ({
-      id: msg.id,
-      content: msg.content,
-      channelId: msg.channelId,
-      author: {
-        username: msg.member?.displayName || msg.author.displayName || msg.author.username,
-        id: msg.author.id
-      },
-      timestamp: msg.createdAt.toISOString()
-    }))
+        return transformedMessage
+      }))
 
+    return messages
   } catch (error) {
     console.error('Error fetching messages:', error)
     return []

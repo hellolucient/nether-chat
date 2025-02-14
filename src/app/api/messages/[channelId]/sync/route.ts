@@ -9,12 +9,13 @@ type Context = {
   }
 }
 
-// Add this near the top of the file
+// Update the MessageData interface to match our Message type
 interface MessageData {
   id: string
   channel_id: string
   sender_id: string
   author_username: string
+  author_display_name: string
   content: string
   sent_at: string
   referenced_message_id: string | null
@@ -23,6 +24,31 @@ interface MessageData {
   isFromBot: boolean
   isBotMention: boolean
   replyingToBot: boolean
+  stickers: Array<{
+    url: string
+    name: string
+  }>
+  attachments: Array<{
+    url: string
+    content_type?: string
+    filename: string
+  }>
+  embeds: Array<{
+    type: string
+    url?: string
+    image?: { url: string }
+  }>
+  sticker_items: Array<{
+    id: string
+    name: string
+  }>
+}
+
+// Add interface for bot assignment
+interface BotAssignment {
+  discord_bots: {
+    bot_token: string
+  }
 }
 
 // Fetch messages in batches of 100 until we have 300 or run out
@@ -118,6 +144,12 @@ export async function GET(req: NextRequest, context: Context) {
     console.log('👛 Wallet:', wallet)
     console.log('🔄 Fetching up to 300 messages from Discord...')
 
+    // At the start of the function, log the table structure
+    const { data: tableInfo, error: tableError } = await supabase
+      .rpc('get_table_info', { table_name: 'messages' })
+    
+    console.log('📋 Database table structure:', tableInfo)
+
     // Fetch messages in batches of 100 until we have 300 or run out
     const discordMessages = await fetchMessages(channel)
 
@@ -138,76 +170,47 @@ export async function GET(req: NextRequest, context: Context) {
       .from('discord_bots')
       .select('discord_id, bot_name')
 
-    // Transform and store
+    // Transform Discord messages to match our database schema exactly
     const messagesToStore = await Promise.all(Array.from(discordMessages.values())
       .map(async msg => {
-        let referencedAuthorId: string | null = null
+        // Get referenced message content and author if it exists
         let referencedContent: string | null = null
-        
+        let referencedAuthorId: string | null = null
         if (msg.reference?.messageId) {
-          console.log('🔍 Processing message with reference:', {
-            messageId: msg.id,
-            referenceId: msg.reference.messageId
-          })
-          const referenced = await getReferencedMessage(msg.reference.messageId, channel)
-          if (referenced) {
-            referencedAuthorId = referenced.author_id
-            referencedContent = referenced.content
+          try {
+            const referencedMsg = await channel.messages.fetch(msg.reference.messageId)
+            referencedContent = referencedMsg.content
+            referencedAuthorId = referencedMsg.author.id
+          } catch (error) {
+            console.warn('Could not fetch referenced message:', error)
           }
         }
 
-        const messageData = {
+        // Return only the core message fields we know exist
+        return {
           id: msg.id,
           channel_id: msg.channelId,
           sender_id: msg.author.id,
-          author_username: msg.member?.displayName || msg.author.displayName || msg.author.username,
           content: msg.content,
           sent_at: msg.createdAt.toISOString(),
           referenced_message_id: msg.reference?.messageId || null,
           referenced_message_author_id: referencedAuthorId,
           referenced_message_content: referencedContent,
-          isFromBot: botData?.some(bot => bot.discord_id === msg.author.id) || false,
-          isBotMention: msg.mentions.users.some(user => 
-            botData?.some(bot => bot.discord_id === user.id)
-          ) || false,
-          replyingToBot: referencedAuthorId ? 
-            botData?.some(bot => bot.discord_id === referencedAuthorId) || false : 
-            false
+          author_username: msg.author.username,
+          author_display_name: msg.member?.displayName || msg.author.displayName || msg.author.username,
+          attachments: Array.from(msg.attachments.values()),
+          embeds: msg.embeds,
+          stickers: Array.from(msg.stickers.values())
         }
-
-        console.log('📝 Storing message:', {
-          id: messageData.id,
-          content: messageData.content.substring(0, 50),
-          reference: {
-            id: messageData.referenced_message_id,
-            authorId: messageData.referenced_message_author_id,
-            content: messageData.referenced_message_content?.substring(0, 50)
-          }
-        })
-
-        if (msg.reference?.messageId === '1338978731317788672') {
-          console.log('🔍 Found our target message:', {
-            messageId: msg.id,
-            reference: msg.reference,
-            referencedAuthorId,
-            referencedContent
-          })
-        }
-
-        return messageData
       }))
 
-    // Before Supabase upsert
-    console.log('💾 Final message data before upsert:', messagesToStore.map(msg => ({
-      id: msg.id,
-      referenced_message_id: msg.referenced_message_id,
-      referenced_message_author_id: msg.referenced_message_author_id,
-      // Add this to see if any bot IDs match
-      isKnownBotId: botData?.some(bot => bot.discord_id === msg.referenced_message_author_id)
-    })))
-
-    // Store in Supabase
+    // Before Supabase upsert, log the full structure of the first message
     if (messagesToStore.length > 0) {
+      console.log('📊 Message structure:', {
+        firstMessage: Object.keys(messagesToStore[0]),
+        sampleValues: messagesToStore[0]
+      })
+
       const { error } = await supabase
         .from('messages')
         .upsert(messagesToStore, { onConflict: 'id' })
@@ -215,15 +218,6 @@ export async function GET(req: NextRequest, context: Context) {
       if (error) {
         console.error('❌ Sync error:', error)
         return NextResponse.json({ error: 'Sync failed' }, { status: 500 })
-      }
-
-      // And just before the upsert
-      const targetMessage = messagesToStore.find(m => 
-        m.referenced_message_id === '1338978731317788672' ||
-        m.id === '1338978731317788672'
-      )
-      if (targetMessage) {
-        console.log('🎯 Target message before upsert:', targetMessage)
       }
     }
 

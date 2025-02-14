@@ -74,7 +74,7 @@ export function Chat({ channelId }: ChatProps) {
     [] // Empty deps since we want the same debounced function
   )
 
-  const fetchMessages = async () => {
+  const fetchMessages = useCallback(async () => {
     try {
       setLoading(true)
       
@@ -83,18 +83,12 @@ export function Chat({ channelId }: ChatProps) {
         await syncMessages(channelId, publicKey.toString())
       }
 
-      // Then get messages from Supabase
       if (!publicKey?.toString()) {
         throw new Error('No wallet connected')
       }
 
       console.log('📥 Fetching messages for channel:', channelId)
       const response = await fetch(`/api/messages/${channelId}?wallet=${publicKey.toString()}`)
-      
-      // Log the raw response
-      console.log('Response status:', response.status)
-      const responseText = await response.clone().text()
-      console.log('Response text:', responseText)
       
       const data = await response.json()
       if (!response.ok) {
@@ -103,63 +97,55 @@ export function Chat({ channelId }: ChatProps) {
 
       const messages = data.messages || []
       console.log('📥 Fetched messages:', messages.length)
-      console.log('📥 Messages from API:', data.messages?.slice(0,2).map(m => ({
-        id: m.id,
-        refId: m.referenced_message_id,
-        refAuthor: m.referenced_message_author_id,
-        refContent: m.referenced_message_content
-      })))
       setMessages(messages)
     } catch (error) {
       console.error('Failed to fetch messages:', error)
-      throw error // Re-throw to be caught by loadChannel
+      throw error
     } finally {
       setLoading(false)
     }
-  }
+  }, [channelId, publicKey, syncMessages])
 
-  // Use fetchMessages in the loadChannel function
   useEffect(() => {
     if (!channelId || !publicKey) return
     
     const loadChannel = async () => {
       setLoading(true)
-      // Clear messages immediately when switching channels
       setMessages([])
       
       try {
         await fetchMessages()
-        markChannelAsRead(channelId)
+        await markChannelAsRead(channelId)
       } catch (error) {
         console.error('Failed to load channel:', error)
       }
     }
 
     loadChannel()
-  }, [channelId, publicKey])
+  }, [channelId, publicKey, fetchMessages, markChannelAsRead])
 
-  const handleSendMessage = async (content: string | MessageContent) => {
+  const handleSendMessage = async (content: MessageContent) => {
     if (!channelId || !publicKey) return
 
     try {
-      // Send the message
-      const response = await fetch(`/api/messages/${channelId}`, {
+      console.log('📤 Sending message:', { content, channelId })
+      
+      const response = await fetch('/api/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-wallet-address': publicKey.toString()
         },
-        body: JSON.stringify(
-          typeof content === 'string' 
-            ? { content, type: 'text' } 
-            : content
-        ),
+        body: JSON.stringify({
+          channelId,
+          content  // Just pass the MessageContent object directly
+        }),
       })
 
       if (!response.ok) {
         const error = await response.text()
         console.error('❌ Message send failed:', error)
-        throw new Error('Failed to send message')
+        throw new Error(`Failed to send message: ${error}`)
       }
 
       // Immediately fetch messages - no delay needed

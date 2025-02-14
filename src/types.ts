@@ -1,3 +1,10 @@
+// Add Channel type export
+interface Channel {
+  id: string
+  name: string
+  unread?: boolean
+}
+
 // Message content type that Chat.tsx is looking for
 interface MessageContent {
   type: 'text' | 'gif' | 'image' | 'sticker'
@@ -6,30 +13,37 @@ interface MessageContent {
   stickerId?: string
 }
 
-interface Message {
+export interface Message {
   id: string
+  content: string
   channel_id: string
   sender_id: string
   author_username: string
-  content: string
   sent_at: string
   referenced_message_id: string | null
   referenced_message_author_id: string | null
   referenced_message_content: string | null
-  // Add bot-related flags
   isFromBot: boolean
   isBotMention: boolean
   replyingToBot: boolean
-  // Add author field that ChatInput is looking for
-  author: {
+  stickers: Array<{
+    url: string
+    name: string
+  }>
+  attachments: Array<{
+    url: string
+    content_type?: string
+    filename: string
+  }>
+  embeds: Array<{
+    type: string
+    url?: string
+    image?: { url: string }
+  }>
+  sticker_items: Array<{
     id: string
-    username: string
-  }
-  // Discord message fields
-  attachments: any[] | null
-  embeds: any[] | null
-  stickers: any[] | null
-  sticker_items: any[] | null
+    name: string
+  }>
 }
 
-export type { Message, MessageContent } 
+export type { Message, MessageContent, Channel } 

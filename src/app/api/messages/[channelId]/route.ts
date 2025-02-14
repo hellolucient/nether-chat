@@ -27,8 +27,8 @@ type BotData = {
 function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message {
   // Get referenced message author if it exists
   let referencedAuthorId: string | null = null
+  let referencedContent: string | null = null
   if (msg.reference?.messageId) {
-    // If it's a bot message, use the bot's ID
     const referencingBot = bots.find(bot => 
       msg.reference && bot.discord_id === msg.reference.messageId
     )
@@ -49,14 +49,22 @@ function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message 
     sent_at: timestamp,
     referenced_message_id: msg.reference?.messageId || null,
     referenced_message_author_id: referencedAuthorId,
-    referenced_message_content: null,
+    referenced_message_content: referencedContent,
+    author: {
+      id: msg.author.id,
+      username: msg.author.username
+    },
+    stickers: Array.from(msg.stickers.values()).map(sticker => ({
+      url: `https://cdn.discordapp.com/stickers/${sticker.id}.png`,
+      name: sticker.name
+    })),
     attachments: Array.from(msg.attachments.values()).map(a => ({
       url: a.url,
       content_type: a.contentType || undefined,
       filename: a.name
     })),
     embeds: msg.embeds.map(e => ({
-      type: e.data.type || 'rich',
+      type: e.type,
       url: e.url || undefined,
       image: e.image ? { url: e.image.url } : undefined
     })),
@@ -64,13 +72,9 @@ function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message 
       id: s.id,
       name: s.name
     })),
-    isFromBot: bots.some(bot => bot.discord_id === msg.author.id),
-    isBotMention: msg.mentions.users.some(user => 
-      bots.some(bot => bot.discord_id === user.id)
-    ),
-    replyingToBot: msg.reference ? 
-      bots.some(bot => bot.discord_id === msg.reference?.messageId) : 
-      false  // Return false instead of null when no reference
+    isFromBot: msg.author.bot,
+    isBotMention: false,
+    replyingToBot: false
   }
 }
 
