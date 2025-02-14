@@ -45,7 +45,10 @@ function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message 
     content: msg.content,
     channel_id: msg.channelId,
     sender_id: msg.author.id,
-    author_username: msg.member?.displayName || msg.author.displayName || msg.author.username,
+    author_username: msg.member?.displayName || 
+                    msg.author.globalName || 
+                    msg.author.displayName || 
+                    msg.author.username,
     sent_at: timestamp,
     referenced_message_id: msg.reference?.messageId || null,
     referenced_message_author_id: referencedAuthorId,
