@@ -74,3 +74,14 @@ export interface StickerMessageContent extends BaseMessageContent {
 }
 
 export type MessageContent = ImageMessageContent | TextMessageContent | StickerMessageContent
+
+// Add these exports
+export type {
+  Message,
+  MessageContent,
+  MessageReply,
+  ImageMessageContent,
+  TextMessageContent,
+  StickerMessageContent,
+  BaseMessageContent
+}
