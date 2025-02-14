@@ -46,6 +46,21 @@ function formatMessageWithQuotes(content: string) {
   })
 }
 
+function formatDate(dateString: string) {
+  try {
+    // Handle Supabase format directly (2025-02-01 04:42:36.56+00)
+    const date = new Date(dateString)
+    if (isNaN(date.getTime())) {
+      console.warn('Invalid date string:', dateString)
+      return 'Invalid date'
+    }
+    return date.toLocaleString()
+  } catch (error) {
+    console.error('Error formatting date:', dateString, error)
+    return 'Invalid date'
+  }
+}
+
 function MessageContent({ message }: { message: Message }) {
   console.log('Message content:', { 
     message,
@@ -154,32 +169,39 @@ const replaceBotMentions = (content: string, botNames: Record<string, string>) =
 }
 
 // Add CSS classes for different message types
-const getMessageClasses = (message: Message) => {
-  const baseClasses = "p-2 rounded-lg mb-2"
+function getMessageClasses(message: Message): string {
+  const baseClasses = "p-4 rounded-lg group relative"
   
   if (message.isFromBot) {
-    return `${baseClasses} bg-purple-900/50 border border-purple-500/50` // Bot messages - most prominent
-  }
-  if (message.replyingToBot) {
-    return `${baseClasses} bg-purple-900/20` // Replies to bot - subtle background
-  }
-  if (message.isBotMention) {
-    return `${baseClasses} bg-gradient-to-r from-purple-500/20 to-[#1E1E24] border-l-4 border-l-purple-500` // Gradient fade + border
+    // Messages FROM bots get a purple gradient
+    return `${baseClasses} bg-gradient-to-r from-purple-900/50 to-purple-800/30`
   }
   
-  return `${baseClasses} bg-[#1E1E24]` // Regular messages
+  if (message.isBotMention) {
+    // Messages that @mention bots get a blue tint
+    return `${baseClasses} bg-blue-900/30`
+  }
+  
+  if (message.replyingToBot) {
+    // Messages replying to bots get a subtle purple tint
+    return `${baseClasses} bg-purple-900/20`
+  }
+  
+  // Regular messages get the default dark background
+  return `${baseClasses} bg-[#1E1E1E]`
 }
 
 export function MessageList({ messages, ...props }: MessageListProps) {
   const messageListRef = useRef<HTMLDivElement>(null)
   const [botNames, setBotNames] = useState<Record<string, string>>({})
+  const [referencedAuthors, setReferencedAuthors] = useState<Record<string, string>>({})
   
   // Add debug logging for messages and bot names
   useEffect(() => {
     console.log('🔄 MessageList: Messages updated:', messages.map(m => ({
       id: m.id,
-      content: m.content?.substring(0, 50), // Truncate long content
-      author: m.author.username,
+      content: m.content?.substring(0, 50),
+      author: m.author_username,
       hasReference: !!m.referenced_message_id,
       referenceId: m.referenced_message_id,
       referenceContent: m.referenced_message_content?.substring(0, 50),
@@ -193,20 +215,40 @@ export function MessageList({ messages, ...props }: MessageListProps) {
 
   // Get bot names once when component mounts
   useEffect(() => {
-    const getBotNames = async () => {
-      const { data } = await supabase
+    const fetchBotNames = async () => {
+      const { data: bots } = await supabase
         .from('discord_bots')
         .select('discord_id, bot_name')
       
-      if (data) {
-        const nameMap = Object.fromEntries(
-          data.map(bot => [bot.discord_id, bot.bot_name])
-        )
-        setBotNames(nameMap)
+      if (bots) {
+        const names = bots.reduce((acc, bot) => ({
+          ...acc,
+          [bot.discord_id]: bot.bot_name
+        }), {})
+        setBotNames(names)
+        console.log('🤖 Loaded bot names:', names)
       }
     }
-    getBotNames()
+    
+    fetchBotNames()
   }, [])
+
+  // Add function to fetch author username
+  const fetchReferencedAuthor = async (authorId: string) => {
+    const { data } = await supabase
+      .from('messages')
+      .select('author_username')
+      .eq('sender_id', authorId)
+      .limit(1)
+      .single()
+    
+    if (data) {
+      setReferencedAuthors(prev => ({
+        ...prev,
+        [authorId]: data.author_username
+      }))
+    }
+  }
 
   // Scroll to bottom when messages change
   const scrollToBottom = () => {
@@ -226,6 +268,58 @@ export function MessageList({ messages, ...props }: MessageListProps) {
     console.log('📊 MessageList: Messages with references:', 
       messages.filter(m => m.referenced_message_id)
     )
+  }, [messages])
+
+  useEffect(() => {
+    console.log('🖥️ Displaying Messages:', {
+      count: messages.length,
+      oldestMessage: messages[0]?.sent_at,
+      newestMessage: messages[messages.length - 1]?.sent_at,
+      messageTimestamps: messages.map(m => m.sent_at)
+    })
+  }, [messages])
+
+  // Add logging when messages are received
+  useEffect(() => {
+    console.log('MessageList received messages with dates:', {
+      sample: messages.slice(0, 2).map(m => ({
+        sent_at: m.sent_at,
+        parsed: new Date(m.sent_at),
+        display: formatDate(m.sent_at)
+      }))
+    })
+  }, [messages])
+
+  // Add effect to fetch author names
+  useEffect(() => {
+    messages.forEach(msg => {
+      if (msg.referenced_message_author_id && 
+          !botNames[msg.referenced_message_author_id] && 
+          !referencedAuthors[msg.referenced_message_author_id]) {
+        fetchReferencedAuthor(msg.referenced_message_author_id)
+      }
+    })
+  }, [messages, botNames])
+
+  useEffect(() => {
+    console.log('🟢 REFERENCE CHECK - UI:', messages
+      .filter(m => m.referenced_message_id)  // Only show messages with references
+      .map(m => ({
+        id: m.id,
+        refId: m.referenced_message_id,
+        refAuthor: m.referenced_message_author_id,
+        refContent: m.referenced_message_content
+    })))
+  }, [messages])
+
+  // Add at top of component
+  useEffect(() => {
+    console.log('🎯 Messages in MessageList:', messages.map(m => ({
+      id: m.id,
+      refId: m.referenced_message_id,
+      refAuthor: m.referenced_message_author_id,
+      refContent: m.referenced_message_content
+    })))
   }, [messages])
 
   return (
@@ -249,10 +343,10 @@ export function MessageList({ messages, ...props }: MessageListProps) {
               {/* Author and timestamp */}
               <div className="flex items-center gap-2 mb-1">
                 <span className="font-medium text-purple-300">
-                  {message.author.displayName || message.author.username}
+                  {message.author_username}
                 </span>
                 <span className="text-xs text-gray-400">
-                  {new Date(message.timestamp).toLocaleString()}
+                  {formatDate(message.sent_at)}
                 </span>
                 <button
                   onClick={() => props.onReplyTo(message)}
@@ -263,17 +357,24 @@ export function MessageList({ messages, ...props }: MessageListProps) {
               </div>
 
               {/* Show referenced message if it exists */}
-              {message.referenced_message_id && (
+              {message.referenced_message_id && message.referenced_message_author_id && (
                 <div className="mb-2 pl-4 border-l-2 border-[#363640]">
                   <div className="text-gray-400 text-sm">
-                    <span className="text-purple-300">
-                      {message.referenced_message_author_id && botNames[message.referenced_message_author_id] 
-                        ? botNames[message.referenced_message_author_id] 
-                        : "Unknown"}
-                    </span>
-                    <div className="text-gray-300 mt-1">
-                      {message.referenced_message_content || "Message not found"}
+                    <div className="flex items-center gap-2">
+                      <span className="text-purple-300">
+                        {message.referenced_message_author_id && (
+                          botNames[message.referenced_message_author_id] || 
+                          referencedAuthors[message.referenced_message_author_id] ||
+                          "Unknown User"
+                        )}
+                      </span>
+                      <span className="text-xs text-gray-500">wrote:</span>
                     </div>
+                    {message.referenced_message_content && (
+                      <div className="text-gray-300 mt-1">
+                        {message.referenced_message_content}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

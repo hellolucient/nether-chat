@@ -7,12 +7,16 @@ export interface Channel {
 export interface Message {
   id: string
   content: string
-  channelId: string
-  author: {
-    username: string
-    id: string
-  }
-  timestamp: string
+  channel_id: string
+  author_username: string
+  sender_id: string
+  sent_at: string
+  referenced_message_id: string | null
+  referenced_message_author_id: string | null
+  referenced_message_content: string | null
+  isFromBot?: boolean
+  isBotMention?: boolean
+  replyingToBot?: boolean
   embeds?: Array<{
     type: string
     url?: string
@@ -33,7 +37,6 @@ export interface Message {
     content_type?: string
     filename: string
   }>
-  created_at: string
 }
 
 export interface MessageListProps {
@@ -43,3 +46,38 @@ export interface MessageListProps {
   channelId: string
   onRefresh: () => Promise<void>
 }
+
+export interface ImageMessage {
+  type: 'image'
+  content: string
+  url: string
+  stickerId?: string
+  reply?: {
+    messageReference: { messageId: string }
+    quotedContent: string
+    author: { username: string }
+  }
+}
+
+export interface TextMessage {
+  type: 'text'
+  content: string
+  reply?: {
+    messageReference: { messageId: string }
+    quotedContent: string
+    author: { username: string }
+  }
+}
+
+export interface StickerMessage {
+  type: 'sticker'
+  stickerId: string
+  url: string
+  reply?: {
+    messageReference: { messageId: string }
+    quotedContent: string
+    author: { username: string }
+  }
+}
+
+export type MessageContent = string | ImageMessage | TextMessage | StickerMessage

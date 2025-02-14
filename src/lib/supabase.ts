@@ -25,7 +25,7 @@ export async function getChannels() {
   const { data, error } = await supabase
     .from('channel_mappings')
     .select('*')
-    .order('channel_name')
+    .order('position', { ascending: true })
 
   if (error) throw error
   return data
@@ -34,38 +34,18 @@ export async function getChannels() {
 export async function getChannelMessages(channelId: string, walletAddress: string) {
   console.log('📊 Fetching messages from Supabase for channel:', channelId)
   
-  // Calculate timestamp for 48 hours ago
-  const fortyEightHoursAgo = new Date()
-  fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48)
-  
-  // First get messages from last 48 hours
-  const { data: recentMessages, error: recentError } = await supabase
+  // Get messages for this channel
+  const { data: messages, error } = await supabase
     .from('messages')
     .select('*')
     .eq('channel_id', channelId)
-    .gte('sent_at', fortyEightHoursAgo.toISOString())
     .order('sent_at', { ascending: false })
+    .limit(300)  // Keep last 300 messages
 
-  if (recentError) {
-    console.error('❌ Error fetching recent messages:', recentError)
-    throw recentError
+  if (error) {
+    console.error('❌ Error fetching messages:', error)
+    throw error
   }
-
-  // Also get any bot messages (these are kept forever)
-  const { data: botMessages, error: botError } = await supabase
-    .from('messages')
-    .select('*')
-    .eq('channel_id', channelId)
-    .lt('sent_at', fortyEightHoursAgo.toISOString())
-    .order('sent_at', { ascending: false })
-
-  if (botError) {
-    console.error('❌ Error fetching bot messages:', botError)
-    throw botError
-  }
-
-  const allMessages = [...(recentMessages || []), ...(botMessages || [])]
-  console.log('📦 Raw data from Supabase:', allMessages)
 
   // Get the specific bot for this wallet
   const { data: userBot } = await supabase
@@ -82,7 +62,7 @@ export async function getChannelMessages(channelId: string, walletAddress: strin
     .single()
 
   // Transform messages and add bot flags - now only for user's bot
-  const transformed = allMessages.map(msg => {
+  const transformed = messages.map(msg => {
     const isBot = bot?.discord_id === msg.sender_id
     // Check for bot mention using Discord ID format
     const isBotMention = msg.content.includes(`<@${bot?.discord_id}>`)

@@ -25,27 +25,31 @@ type BotData = {
 
 // Helper function to transform Discord message to our format
 function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message {
-  // Get the member's display name if available, fall back to username
-  const displayName = msg.member?.displayName || msg.author.displayName || msg.author.username
+  // Get referenced message author if it exists
+  let referencedAuthorId: string | null = null
+  if (msg.reference?.messageId) {
+    // If it's a bot message, use the bot's ID
+    const referencingBot = bots.find(bot => 
+      msg.reference && bot.discord_id === msg.reference.messageId
+    )
+    if (referencingBot) {
+      referencedAuthorId = referencingBot.discord_id
+    }
+  }
 
-  // Check if message is from/mentions/replies to our bot
-  const isFromBot = bots.some(bot => bot.discord_id === msg.author.id)
-  const mentionsBot = msg.mentions.users.some(user => 
-    bots.some(bot => bot.discord_id === user.id)
-  )
-  const replyingToBot = msg.reference ? 
-    bots.some(bot => bot.discord_id === msg.reference?.messageId) : 
-    false  // Return false instead of null when no reference
+  // Get the raw Discord message timestamp before transformation
+  const timestamp = msg.createdAt.toISOString()
 
   return {
     id: msg.id,
     content: msg.content,
-    channelId: msg.channelId,
-    author: {
-      username: displayName,  // Use display name here
-      id: msg.author.id
-    },
-    timestamp: msg.createdAt.toISOString(),
+    channel_id: msg.channelId,
+    author_username: msg.member?.displayName || msg.author.displayName || msg.author.username,
+    sender_id: msg.author.id,
+    sent_at: timestamp,
+    referenced_message_id: msg.reference?.messageId || null,
+    referenced_message_author_id: referencedAuthorId,
+    referenced_message_content: null,
     attachments: Array.from(msg.attachments.values()).map(a => ({
       url: a.url,
       content_type: a.contentType || undefined,
@@ -60,9 +64,13 @@ function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message 
       id: s.id,
       name: s.name
     })),
-    isFromBot,
-    isBotMention: mentionsBot,
-    replyingToBot
+    isFromBot: bots.some(bot => bot.discord_id === msg.author.id),
+    isBotMention: msg.mentions.users.some(user => 
+      bots.some(bot => bot.discord_id === user.id)
+    ),
+    replyingToBot: msg.reference ? 
+      bots.some(bot => bot.discord_id === msg.reference?.messageId) : 
+      false  // Return false instead of null when no reference
   }
 }
 
@@ -70,228 +78,23 @@ function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-// GET handler for fetching messages
-export async function GET(
-  req: NextRequest,
-  context: Context
-) {
-  console.log('🎯 [channelId] route handling request:', {
-    url: req.url,
-    channelId: context.params.channelId,
-    time: new Date().toISOString()  // Add timestamp
-  })
-  const startTime = Date.now()
-  console.log('🚀 Starting message fetch:', {
-    channelId: context.params.channelId,
-    wallet: req.nextUrl.searchParams.get('wallet'),
-    url: req.url
-  })
+// GET handler that fetches messages
+export async function GET(req: NextRequest, context: Context) {
+  const { channelId } = context.params
+  
+  const { data: messages, error } = await supabase
+    .from('messages')  // ✅ Correct - querying 'messages' table
+    .select('*')
+    .eq('channel_id', channelId)
+    .order('sent_at', { ascending: true })
 
-  try {
-    const { channelId } = context.params
-    const wallet = req.nextUrl.searchParams.get('wallet')
-
-    if (!channelId || !wallet) {
-      return NextResponse.json(
-        { error: 'Missing required parameters' },
-        { status: 400 }
-      )
-    }
-
-    // Check if user has access to this channel
-    const { data: assignment } = await supabase
-      .from('bot_assignments')
-      .select('channel_access')
-      .eq('wallet_address', wallet)
-      .single()
-
-    if (!assignment?.channel_access?.includes(channelId)) {
-      console.log('❌ No channel access for wallet:', wallet, 'channel:', channelId)
-      return NextResponse.json(
-        { error: 'No access to this channel' }, 
-        { status: 403 }
-      )
-    }
-
-    // Get Discord client and fetch messages
-    const client = await getDiscordClient(wallet)
-    console.log('🤖 Got Discord client for wallet:', wallet)
-    
-    const channel = await client.channels.fetch(channelId)
-    if (!channel) {
-      console.error('❌ Channel not found:', channelId)
-      throw new Error('Channel not found')
-    }
-
-    console.log('📺 Fetched channel:', {
-      id: channel.id,
-      type: channel.type,
-      isText: channel instanceof TextChannel,
-      name: channel instanceof TextChannel ? channel.name : 'unknown'
-    })
-    
-    if (!(channel instanceof TextChannel)) {
-      console.error('❌ Channel is not a text channel:', {
-        channelId,
-        type: channel.type,
-        constructor: channel.constructor.name
-      })
-      throw new Error('Channel is not a text channel')
-    }
-
-    console.log('🔍 Attempting to fetch messages from Discord...')
-    const discordMessages = await channel.messages.fetch({ 
-      limit: 50,
-      cache: true  // Only use valid options
-    })
-    console.log('📨 Got messages from Discord:', {
-      count: discordMessages.size,
-      first: discordMessages.first()?.content.substring(0, 30),
-      last: discordMessages.last()?.content.substring(0, 30),
-      timestamps: {
-        first: discordMessages.first()?.createdAt,
-        last: discordMessages.last()?.createdAt
-      }
-    })
-
-    // After fetching from Discord
-    console.log('👤 Raw Discord usernames:', {
-      messages: discordMessages.map(m => ({
-        id: m.id,
-        username: m.author.username,
-        content: m.content.substring(0, 30)
-      }))
-    })
-
-    // Get bots list
-    const { data: bots } = await supabase
-      .from('discord_bots')
-      .select('discord_id, bot_name')
-
-    const messageArray = Array.from(discordMessages.values())
-      .reverse()
-      .map(msg => transformDiscordMessage(msg, bots || []))
-    console.log('🔄 Transformed messages:', messageArray.map(m => ({
-      id: m.id,
-      content: m.content.substring(0, 30),
-      author: m.author.username,
-      timestamp: m.timestamp
-    })))
-
-    // After transformation
-    console.log('🔄 Author check:', messageArray.map(m => ({
-      id: m.id,
-      username: m.author.username,
-      transformed: true
-    })))
-
-    // Save messages to Supabase with more detailed logging
-    const messagesToUpsert = messageArray.map(msg => ({
-      id: msg.id,
-      channel_id: channelId,
-      sender_id: msg.author.id,
-      author_username: msg.author.username,  // Change to use display name
-      content: msg.content,
-      sent_at: msg.timestamp
-    }))
-
-    // Before Supabase save
-    console.log('💾 Username check before save:', messagesToUpsert.map(m => ({
-      id: m.id,
-      username: m.author_username
-    })))
-
-    console.log('💾 Preparing to save messages:', {
-      count: messagesToUpsert.length,
-      channelId,
-      firstMessage: {
-        id: messagesToUpsert[0]?.id,
-        content: messagesToUpsert[0]?.content.substring(0, 30),
-        sent_at: messagesToUpsert[0]?.sent_at
-      },
-      lastMessage: {
-        id: messagesToUpsert[messagesToUpsert.length - 1]?.id,
-        content: messagesToUpsert[messagesToUpsert.length - 1]?.content.substring(0, 30),
-        sent_at: messagesToUpsert[messagesToUpsert.length - 1]?.sent_at
-      }
-    })
-
-    // Add this right before the save
-    console.log('💾 Message save check:', {
-      messagesToSave: messagesToUpsert.length,
-      sample: messagesToUpsert[0],
-      table: 'messages',
-      operation: 'upsert'
-    })
-
-    const { error: saveError, data: savedData } = await supabase
-      .from('messages')
-      .upsert(messagesToUpsert, { 
-        onConflict: 'id',
-        ignoreDuplicates: false
-      })
-      .select()
-
-    // And this after
-    console.log('📝 Save result:', {
-      error: saveError ? {
-        code: saveError.code,
-        message: saveError.message
-      } : null,
-      saved: savedData?.length || 0
-    })
-
-    // Check what was actually saved
-    const { data: checkSaved } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('channel_id', channelId)
-      .order('sent_at', { ascending: false })
-      .limit(5)
-
-    console.log('📊 Messages in DB after save:', {
-      channelId,
-      saved: checkSaved?.length || 0,
-      latest: checkSaved?.[0]
-    })
-
-    // Get last viewed time
-    const { data: lastViewed } = await supabase
-      .from('last_viewed')
-      .select('last_viewed')
-      .eq('channel_id', channelId)
-      .eq('wallet_address', wallet)
-      .single()
-
-    // Check existing messages first
-    const { data: existingMessages } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('channel_id', channelId)
-      .order('sent_at', { ascending: false })
-      .limit(1)
-
-    console.log('📊 Existing messages in DB:', {
-      channelId,
-      latest: existingMessages?.[0],
-      count: existingMessages?.length
-    })
-
-    return NextResponse.json({ 
-      messages: messageArray,
-      lastViewed: lastViewed?.last_viewed 
-    })
-  } catch (error) {
-    console.error('❌ Error in message fetch:', {
-      error,
-      duration: Date.now() - startTime,
-      message: error instanceof Error ? error.message : 'Unknown error'
-    })
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+  if (error) {
+    console.error('Failed to fetch messages:', error)
+    return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 })
   }
+
+  console.log('🔍 First message from Supabase:', messages?.[0])
+  return NextResponse.json({ messages })
 }
 
 // POST handler for sending messages

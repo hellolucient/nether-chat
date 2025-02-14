@@ -7,7 +7,7 @@ import { Message, MessageContent } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { useUnread } from '@/contexts/UnreadContext'
-import { getChannelMessages } from '@/lib/supabase'
+import debounce from 'lodash/debounce'
 
 interface ChatProps {
   channelId: string
@@ -21,6 +21,7 @@ export function Chat({ channelId }: ChatProps) {
   const [authorized, setAuthorized] = useState(true)  // Start as true to prevent flash
   const [checkingAccess, setCheckingAccess] = useState(true)  // New state
   const [replyTo, setReplyTo] = useState<Message | null>(null)
+  const syncInProgress = useRef(false)
 
   // Add ref for message container
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -54,20 +55,64 @@ export function Chat({ channelId }: ChatProps) {
     }
   }, [publicKey, channelId])
 
-  // Add debug logs
-  useEffect(() => {
-    console.log('Channel changed to:', channelId)
-    console.log('Loading state:', loading)
-  }, [channelId, loading])
+  // Create debounced sync function
+  const syncMessages = useCallback(
+    debounce(async (channelId: string, wallet: string) => {
+      if (syncInProgress.current) return
+      
+      try {
+        syncInProgress.current = true
+        console.log('🔄 Starting Discord sync...')
+        const syncResponse = await fetch(`/api/messages/${channelId}/sync?wallet=${wallet}`)
+        if (!syncResponse.ok) {
+          console.error('Sync failed:', await syncResponse.json())
+        }
+      } finally {
+        syncInProgress.current = false
+      }
+    }, 1000),
+    [] // Empty deps since we want the same debounced function
+  )
 
-  // Keep fetchMessages as a separate function for refresh functionality
   const fetchMessages = async () => {
     try {
       setLoading(true)
-      const messages = await getChannelMessages(channelId, publicKey?.toString() || '')
+      
+      // Only sync if we have a wallet
+      if (publicKey?.toString()) {
+        await syncMessages(channelId, publicKey.toString())
+      }
+
+      // Then get messages from Supabase
+      if (!publicKey?.toString()) {
+        throw new Error('No wallet connected')
+      }
+
+      console.log('📥 Fetching messages for channel:', channelId)
+      const response = await fetch(`/api/messages/${channelId}?wallet=${publicKey.toString()}`)
+      
+      // Log the raw response
+      console.log('Response status:', response.status)
+      const responseText = await response.clone().text()
+      console.log('Response text:', responseText)
+      
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch messages')
+      }
+
+      const messages = data.messages || []
+      console.log('📥 Fetched messages:', messages.length)
+      console.log('📥 Messages from API:', data.messages?.slice(0,2).map(m => ({
+        id: m.id,
+        refId: m.referenced_message_id,
+        refAuthor: m.referenced_message_author_id,
+        refContent: m.referenced_message_content
+      })))
       setMessages(messages)
     } catch (error) {
-      console.error('Failed to load messages:', error)
+      console.error('Failed to fetch messages:', error)
+      throw error // Re-throw to be caught by loadChannel
     } finally {
       setLoading(false)
     }
@@ -97,7 +142,7 @@ export function Chat({ channelId }: ChatProps) {
     if (!channelId || !publicKey) return
 
     try {
-      // Send the message first
+      // Send the message
       const response = await fetch(`/api/messages/${channelId}`, {
         method: 'POST',
         headers: {
@@ -117,10 +162,7 @@ export function Chat({ channelId }: ChatProps) {
         throw new Error('Failed to send message')
       }
 
-      // Small delay before refreshing messages
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
-      // Refresh without loading state
+      // Immediately fetch messages - no delay needed
       await fetchMessages()
       await checkUnreadChannels()
     } catch (error) {

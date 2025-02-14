@@ -3,7 +3,8 @@ import {
   GatewayIntentBits, 
   TextChannel, 
   Message,
-  BaseGuildTextChannel
+  BaseGuildTextChannel,
+  Collection
 } from 'discord.js'
 import { supabase } from '@/lib/supabase'
 import { cleanupOldImages } from '@/lib/storage'
@@ -142,7 +143,7 @@ export async function initializeDiscordBot() {
             id: message.id,
             channel_id: message.channelId,
             sender_id: message.author.id,
-            author_username: message.author.username,
+            author_username: message.member?.displayName || message.author.displayName || message.author.username,
             content: message.content,
             sent_at: message.createdAt.toISOString(),
             referenced_message_id: message.reference?.messageId || null,
@@ -154,7 +155,7 @@ export async function initializeDiscordBot() {
 
           console.log('📝 Attempting to store message:', messageData)
 
-          const { data, error } = await supabase
+          const { error } = await supabase
             .from('messages')
             .upsert(messageData, {
               onConflict: 'id'
@@ -165,7 +166,7 @@ export async function initializeDiscordBot() {
             throw error
           }
 
-          console.log('✅ Supabase response:', { data, error })
+          console.log('✅ Supabase response:', { error })
         } catch (error) {
           console.error('❌ Error processing message:', error)
         }
@@ -309,7 +310,8 @@ export async function getChannels(serverId: string) {
       .map(channel => ({
         id: channel.id,
         name: channel.name,
-        type: channel.type
+        type: channel.type,
+        position: channel.position
       }))
     
     console.log('Text channels found:', textChannels.length)
@@ -324,116 +326,70 @@ export async function getChannelMessages(channelId: string): Promise<AppMessage[
   try {
     console.log('🔍 Fetching messages for channel:', channelId)
     
+    // 1. First fetch from Discord
     if (!client) {
       client = await getDiscordClient()
     }
 
-    const channel = await client.channels.fetch(channelId) as TextChannel
-    const discordMessages = await channel.messages.fetch()
-    console.log(`📨 Found ${discordMessages.size} messages`)
+    const channel = await client.channels.fetch(channelId)
+    let discordMessages: Collection<string, Message> | null = null
+    
+    if (channel instanceof TextChannel) {
+      console.log('📥 Fetching messages from Discord...')
+      const fortyEightHoursAgo = new Date()
+      fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48)
 
-    // Store messages in Supabase
-    const messagesToUpsert = await Promise.all(
-      Array.from(discordMessages.values()).map(async (msg) => ({
-        id: msg.id,
-        channel_id: channelId,
-        sender_id: msg.author.id,
-        author_username: msg.author.username,
-        content: msg.content,
-        sent_at: msg.createdAt.toISOString(),
-        referenced_message_id: msg.reference?.messageId || null,
-        referenced_message_author_id: msg.reference ? 
-          (await msg.fetchReference()).author.id : null,
-        referenced_message_content: msg.reference ? 
-          (await msg.fetchReference()).content : null
-      }))
-    )
+      discordMessages = await channel.messages.fetch({ 
+        after: fortyEightHoursAgo.getTime().toString(),
+        cache: false
+      })
+      console.log(`✅ Fetched ${discordMessages.size} messages from Discord`)
+    }
 
-    console.log('💾 Upserting messages to Supabase:', messagesToUpsert.length)
+    if (!discordMessages) {
+      console.log('❌ No messages found or channel is not text channel')
+      return []
+    }
+
+    // 2. Store messages in Supabase for history
+    const messagesToUpsert = Array.from(discordMessages.values()).map(msg => ({
+      id: msg.id,
+      channel_id: channelId,
+      sender_id: msg.author.id,
+      author_username: msg.author.username,
+      content: msg.content,
+      sent_at: msg.createdAt.toISOString(),
+      referenced_message_id: msg.reference?.messageId || null,
+      referenced_message_author_id: msg.reference ? 
+        msg.reference.messageId : null,
+      referenced_message_content: msg.reference ? 
+        msg.content : null
+    }))
+
+    console.log('💾 Storing messages in Supabase...')
     const { error } = await supabase
       .from('messages')
-      .upsert(messagesToUpsert, {
-        onConflict: 'id'
-      })
+      .upsert(messagesToUpsert)
 
     if (error) {
       console.error('❌ Error storing messages:', error)
-    } else {
-      console.log('✅ Messages stored successfully')
     }
 
-    // Transform Discord messages to our app format
-    const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000)
+    // 3. Return the Discord messages directly
+    return Array.from(discordMessages.values()).map(msg => ({
+      id: msg.id,
+      content: msg.content,
+      channelId: msg.channelId,
+      author: {
+        username: msg.member?.displayName || msg.author.displayName || msg.author.username,
+        id: msg.author.id
+      },
+      timestamp: msg.createdAt.toISOString()
+    }))
 
-    // First get messages from last 48 hours
-    const { data: recentMessages } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('channel_id', channelId)
-      .gte('sent_at', fortyEightHoursAgo.toISOString())
-
-    if (!recentMessages) return []
-
-    // Get all referenced message IDs
-    const referencedIds = recentMessages
-      .filter(msg => msg.referenced_message_id)
-      .map(msg => msg.referenced_message_id)
-      .filter(Boolean)
-
-    // Now get both recent messages AND any referenced messages
-    const { data: messages } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('channel_id', channelId)
-      .or(`sent_at.gte.${fortyEightHoursAgo.toISOString()},id.eq.${referencedIds.join('},id.eq.{')})`)
-      .order('sent_at', { ascending: true })
-
-    if (!messages) return []
-
-    const transformedMessages = messages.map(msg => {
-      console.log('🔄 Transforming message:', {
-        id: msg.id,
-        content: msg.content,
-        ref_id: msg.referenced_message_id,
-        ref_content: msg.referenced_message_content
-      })
-
-      return {
-        id: msg.id,
-        content: msg.content,
-        channelId: msg.channel_id,
-        author: {
-          id: msg.sender_id,
-          username: msg.author_username || 'Unknown',
-          displayName: msg.author_username || 'Unknown'
-        },
-        timestamp: msg.sent_at,
-        referenced_message_id: msg.referenced_message_id || null,
-        referenced_message_author_id: msg.referenced_message_author_id || null,
-        referenced_message_content: msg.referenced_message_content || null,
-        attachments: (msg.attachments || []).map((a: any) => ({
-          url: a.url || '',
-          content_type: a.content_type || undefined,
-          filename: a.filename || 'untitled'
-        })),
-        embeds: (msg.embeds || []).map((e: any) => ({
-          type: e.data?.type || 'rich',
-          url: e.url || undefined,
-          thumbnail: e.thumbnail ? { url: e.url || '' } : undefined,
-          image: e.image ? { url: e.url || '' } : undefined
-        })),
-        stickers: (msg.stickers || []).map((s: any) => ({
-          url: s.url || '',
-          name: s.name || ''
-        })),
-        created_at: msg.sent_at
-      }
-    })
-
-    return transformedMessages.reverse()
   } catch (error) {
     console.error('Error fetching messages:', error)
-    throw error
+    return []
   }
 }
 
@@ -472,19 +428,13 @@ export async function disconnectClient() {
 
 async function cleanupOldMessages() {
   try {
-    // Keep 72 hours of messages
-    const cutoffDate = new Date()
-    cutoffDate.setHours(cutoffDate.getHours() - 72)
-    
-    const { error, count } = await supabase
-      .from('messages')
-      .delete()
-      .lt('sent_at', cutoffDate.toISOString())
+    // Keep last 300 messages per channel, plus all bot-related messages
+    const { error } = await supabase.rpc('cleanup_old_messages')
 
     if (error) {
       console.error('❌ Discord: Error cleaning up old messages:', error)
-    } else if (count && count > 0) {
-      console.log(`🧹 Discord: Cleaned up ${count} messages older than 72 hours`)
+    } else {
+      console.log('🧹 Discord: Cleaned up old messages')
     }
 
     // Also cleanup old images

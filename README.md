@@ -203,26 +203,86 @@ In OAuth2 -> URL Generator:
    - Bot Token (the one you copied in step 1)
 4. Click "Assign Bot"
 
-## Message Flow Architecture
+## Project Structure (as of March 2024)
 
-The app uses two distinct message flows:
+src/
+├── app/
+│   ├── api/
+│   │   ├── messages/
+│   │   │   ├── [channelId]/route.ts  # Message fetching endpoint
+│   │   │   └── route.ts
+│   │   ├── channels/
+│   │   │   ├── sync/route.ts
+│   │   │   └── route.ts
+│   │   └── discord/
+│   │       └── messages/route.ts
+│   └── chat/
+│       └── [channelId]/page.tsx
+├── components/
+│   ├── chat/
+│   │   ├── Chat.tsx  # Main chat component
+│   │   ├── MessageList.tsx
+│   │   └── ChatInput.tsx
+│   └── messages/
+├── lib/
+│   ├── discord.ts  # Discord client functions
+│   └── supabase.ts  # Supabase functions
 
-1. **Main Message Flow (Pull-based)**
-   - Fetches messages when user views a channel
-   - Messages are retrieved directly from Discord
-   - Stored in database for persistence
-   - Provides on-demand message history
+## Message Flow
 
-2. **Notification Flow (Push-based)**
-   - Dedicated Listener Bot watches for:
-     - @mentions of user's bot
-     - Replies to user's bot messages
-   - Immediately stores these messages
-   - Powers the unread notifications system
-   - Helps users track important interactions
+### Bot-Related Messages
+```
+Discord → Listener Bot → Supabase messages table → UI
+```
+- Messages from our bots
+- Mentions of our bots
+- Replies to our bot messages
+- Stored indefinitely for complete bot interaction history
+- Stored immediately for unread notifications
 
-This dual approach means:
-- Not all messages need immediate storage
-- Real-time monitoring only for important messages
-- Efficient resource usage
-- Better user experience for finding relevant messages
+The listener bot (initialized in `src/lib/discord.ts`):
+1. Watches for all messages
+2. Identifies bot-related ones:
+   - Messages FROM our bots
+   - Messages MENTIONING our bots
+   - Messages REPLYING to our bots
+3. Stores them in Supabase immediately
+4. Which enables unread notifications
+
+Key parts of the listener:
+```typescript
+client.on('messageCreate', async (message) => {
+  // Check if message is from/mentions/replies to our bot
+  const isFromBot = bots.some(bot => bot.discord_id === message.author.id)
+  const mentionsBot = message.mentions.users.some(user => 
+    bots.some(bot => bot.discord_id === user.id)
+  )
+  const repliedToOurBot = message.reference && 
+    bots.some(bot => bot.discord_id === message.reference?.messageId)
+
+  // Only process if it's bot-related
+  if (!isFromBot && !mentionsBot && !repliedToOurBot) {
+    return
+  }
+
+  // Store in Supabase for unread notifications
+  await supabase.from('messages').upsert(messageData)
+})
+```
+
+2. Regular Messages:
+```
+Discord API → UI → Supabase messages table (when viewed)
+```
+- All other channel messages
+- Fetched directly from Discord when channel is viewed
+- Stored in Supabase (last 300 messages per channel)
+- Displayed in UI
+- No unread notifications for these
+
+### Message Flow Details
+1. User opens channel → Chat.tsx component loads
+2. Chat.tsx calls /api/messages/[channelId] endpoint
+3. Endpoint fetches fresh messages from Discord
+4. Messages displayed in UI (newest at bottom)
+5. Messages stored in Supabase for history

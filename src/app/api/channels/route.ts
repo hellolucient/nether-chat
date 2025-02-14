@@ -36,8 +36,10 @@ export async function GET() {
       .filter(channel => channel?.type === 0) // 0 is GUILD_TEXT
       .map(channel => ({
         id: channel?.id,
-        name: channel?.name
+        name: channel?.name,
+        position: channel?.position
       }))
+      .sort((a, b) => (a.position || 0) - (b.position || 0))
 
     // Cleanup
     client.destroy()
