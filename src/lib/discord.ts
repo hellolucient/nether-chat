@@ -411,10 +411,10 @@ export async function getChannelMessages(channelId: string): Promise<AppMessage[
           sticker_items: [],
           isFromBot: msg.author.bot,
           isBotMention: msg.mentions.users.some(user => 
-            bots.some(bot => bot.discord_id === user.id)
+            bots?.some(bot => bot.discord_id === user.id) ?? false
           ),
           replyingToBot: msg.reference && 
-            bots.some(bot => bot.discord_id === msg.reference.messageId)
+            (bots?.some(bot => bot.discord_id === msg.reference?.messageId) ?? false)
         }
 
         return transformedMessage
