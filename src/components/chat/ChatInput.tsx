@@ -143,7 +143,7 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
             quotedContent: replyTo.content,
             author: { username: replyTo.author_username }
           } : undefined
-        } satisfies ImageMessageContent
+        } as MessageContent
       } else if (selectedSticker) {
         messageContent = {
           type: 'sticker',
@@ -155,7 +155,7 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
             quotedContent: replyTo.content,
             author: { username: replyTo.author_username }
           } : undefined
-        } satisfies StickerMessageContent
+        } as MessageContent
       } else {
         messageContent = {
           type: 'text',
@@ -165,7 +165,7 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
             quotedContent: replyTo.content,
             author: { username: replyTo.author_username }
           } : undefined
-        } satisfies TextMessageContent
+        } as MessageContent
       }
 
       // Send message and wait for it to complete
