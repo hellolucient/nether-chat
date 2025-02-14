@@ -58,19 +58,19 @@ export interface BaseMessageContent {
   reply?: MessageReply
 }
 
-export interface ImageMessageContent extends BaseMessageContent {
+export type ImageMessageContent = {
   type: 'image'
   url: string
-}
+} & BaseMessageContent
 
-export interface TextMessageContent extends BaseMessageContent {
+export type TextMessageContent = {
   type: 'text'
-}
+} & BaseMessageContent
 
-export interface StickerMessageContent extends BaseMessageContent {
+export type StickerMessageContent = {
   type: 'sticker'
   stickerId: string
   url: string
-}
+} & BaseMessageContent
 
 export type MessageContent = ImageMessageContent | TextMessageContent | StickerMessageContent
