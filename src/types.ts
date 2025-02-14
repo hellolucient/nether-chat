@@ -46,4 +46,15 @@ export interface Message {
   }>
 }
 
-export type { Message, MessageContent, Channel } 
+export interface Channel {
+  id: string
+  name: string
+  unread?: boolean
+}
+
+export type MessageContent = {
+  type: 'text' | 'gif' | 'image' | 'sticker'
+  content?: string
+  url?: string
+  stickerId?: string
+} 
