@@ -60,7 +60,7 @@ function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message 
       filename: a.name
     })),
     embeds: msg.embeds.map(e => ({
-      type: e.type,
+      type: e.data.type || 'rich',
       url: e.url || undefined,
       image: e.image ? { url: e.image.url } : undefined
     })),
