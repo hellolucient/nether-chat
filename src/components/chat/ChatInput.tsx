@@ -22,7 +22,7 @@ type SendStatus = 'idle' | 'sending' | 'sent'
 
 interface ChatInputProps {
   channelId: string
-  onSendMessage: (content: string | MessageContent) => Promise<void>
+  onSendMessage: (content: MessageContent) => Promise<void>
   replyTo: Message | null
   onCancelReply: () => void
   onRefreshMessages: () => Promise<void>
@@ -130,41 +130,42 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
     
     setSendStatus('sending')
     try {
-      let messageContent: string | MessageContent
+      let messageContent: MessageContent
 
       if (selectedImage) {
         const imageUrl = await uploadImage(selectedImage)
         messageContent = {
           type: 'image',
-          url: imageUrl,
           content: message,
+          url: imageUrl,
           reply: replyTo ? {
             messageReference: { messageId: replyTo.id },
             quotedContent: replyTo.content,
-            author: replyTo.author
+            author: { username: replyTo.author_username }
           } : undefined
-        }
+        } satisfies ImageMessageContent
       } else if (selectedSticker) {
         messageContent = {
           type: 'sticker',
+          content: message,
           stickerId: selectedSticker.id,
           url: selectedSticker.url,
           reply: replyTo ? {
             messageReference: { messageId: replyTo.id },
             quotedContent: replyTo.content,
-            author: replyTo.author
+            author: { username: replyTo.author_username }
           } : undefined
-        }
+        } satisfies StickerMessageContent
       } else {
-        messageContent = replyTo ? {
+        messageContent = {
           type: 'text',
           content: message,
-          reply: {
+          reply: replyTo ? {
             messageReference: { messageId: replyTo.id },
             quotedContent: replyTo.content,
-            author: replyTo.author
-          }
-        } : message
+            author: { username: replyTo.author_username }
+          } : undefined
+        } satisfies TextMessageContent
       }
 
       // Send message and wait for it to complete
@@ -257,8 +258,10 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
         <div className="mb-2 p-2 bg-[#262626] rounded-lg flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-gray-400">Replying to</span>
-            <span className="text-purple-300">{replyTo.author.username}</span>
-            <span className="text-gray-400 text-sm truncate">{replyTo.content}</span>
+            <span className="text-purple-300">
+              {replyTo?.author_username || 'Unknown User'}
+            </span>
+            <span className="text-gray-400 text-sm truncate">{replyTo?.content}</span>
           </div>
           <button
             type="button"
