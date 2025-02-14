@@ -426,7 +426,7 @@ export function MessageList({ messages, ...props }: MessageListProps) {
               {/* Author and timestamp */}
               <div className="flex items-center gap-2 mb-1">
                 <span className="font-medium text-purple-300">
-                  {message.author_display_name}
+                  {message.author_username}
                   {message.isFromBot && <span className="ml-2 text-xs bg-purple-600 px-2 py-0.5 rounded">APP</span>}
                 </span>
                 <span className="text-xs text-gray-400">
