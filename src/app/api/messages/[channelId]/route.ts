@@ -82,7 +82,11 @@ function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message 
       content_type: a.contentType || undefined,
       filename: a.name
     })),
-    embeds: msg.embeds,
+    embeds: msg.embeds.map(e => ({
+      type: e.data.type || 'rich',
+      url: e.url || undefined,
+      image: e.image ? { url: e.image.url } : undefined
+    })),
     stickers: Array.from(msg.stickers.values()),
     sticker_items: Array.from(msg.sticker_items?.values() || [])
   }
