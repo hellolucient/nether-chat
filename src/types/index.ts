@@ -32,10 +32,6 @@ export interface Message {
     url?: string
     image?: { url: string }
   }>
-  sticker_items: Array<{
-    id: string
-    name: string
-  }>
 }
 
 export interface MessageListProps {
