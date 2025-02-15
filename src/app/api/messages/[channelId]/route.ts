@@ -25,6 +25,29 @@ type BotData = {
 
 // Helper function to transform Discord message to our format
 function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message {
+  // Add debug log with distinctive icon
+  console.log('⚡ Message Transform:', {
+    id: msg.id,
+    authorId: msg.author.id,
+    bots: bots.map(b => b.discord_id)
+  })
+
+  const isFromBot = bots.some(bot => bot.discord_id === msg.author.id)
+  const isBotMention = msg.mentions.users.some(user => 
+    bots.some(bot => bot.discord_id === user.id)
+  )
+  const replyingToBot = msg.reference?.messageId ? 
+    bots.some(bot => bot.discord_id === msg.reference?.messageId) : 
+    false
+
+  // Add debug log for flags with distinctive icon
+  console.log('⛳ Flag Check:', {
+    id: msg.id,
+    isFromBot,
+    isBotMention,
+    replyingToBot
+  })
+
   // Get referenced message author if it exists
   let referencedAuthorId: string | null = null
   let referencedContent: string | null = null
@@ -45,35 +68,19 @@ function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message 
     content: msg.content,
     channel_id: msg.channelId,
     sender_id: msg.author.id,
-    author_username: msg.member?.displayName || 
-                    msg.author.globalName || 
-                    msg.author.displayName || 
-                    msg.author.username,
+    author_username: msg.author.username,
+    author_display_name: msg.member?.displayName || msg.author.displayName || msg.author.username,
     sent_at: timestamp,
     referenced_message_id: msg.reference?.messageId || null,
     referenced_message_author_id: referencedAuthorId,
     referenced_message_content: referencedContent,
-    stickers: Array.from(msg.stickers.values()).map(sticker => ({
-      url: `https://cdn.discordapp.com/stickers/${sticker.id}.png`,
-      name: sticker.name
-    })),
-    attachments: Array.from(msg.attachments.values()).map(a => ({
-      url: a.url,
-      content_type: a.contentType || undefined,
-      filename: a.name
-    })),
-    embeds: msg.embeds.map(e => ({
-      type: e.data.type || 'rich',
-      url: e.url || undefined,
-      image: e.image ? { url: e.image.url } : undefined
-    })),
-    sticker_items: Array.from(msg.stickers.values()).map(s => ({
-      id: s.id,
-      name: s.name
-    })),
-    isFromBot: msg.author.bot,
-    isBotMention: false,
-    replyingToBot: false
+    isFromBot: isFromBot,
+    isBotMention: isBotMention,
+    replyingToBot: replyingToBot,
+    attachments: Array.from(msg.attachments.values()),
+    embeds: msg.embeds,
+    stickers: Array.from(msg.stickers.values()),
+    sticker_items: Array.from(msg.sticker_items?.values() || [])
   }
 }
 
