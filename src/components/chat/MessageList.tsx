@@ -156,21 +156,23 @@ const replaceBotMentions = (content: string, botNames: Record<string, string>) =
 }
 
 // Add CSS classes for different message types
-function getMessageClasses(message: Message): string {
+function getMessageClasses(message: Message, botNames: Record<string, string>): string {
   const baseClasses = "p-4 rounded-lg group relative"
   
-  // Messages FROM bots get a purple gradient
-  if (message.isFromBot) {
+  // Calculate flags on the fly
+  const isFromBot = botNames[message.sender_id] || false
+  const isBotMention = message.content.includes('<@') && message.content.includes('>')
+  const replyingToBot = message.referenced_message_author_id && botNames[message.referenced_message_author_id]
+  
+  if (isFromBot) {
     return `${baseClasses} bg-gradient-to-r from-purple-900/50 to-purple-800/30`
   }
   
-  // Messages that @mention bots get a blue tint
-  if (message.isBotMention) {
+  if (isBotMention) {
     return `${baseClasses} bg-blue-900/30`
   }
   
-  // Messages replying to bots get a different purple tint
-  if (message.replyingToBot) {
+  if (replyingToBot) {
     return `${baseClasses} bg-purple-800/20`
   }
   
@@ -359,7 +361,7 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
           isBotMention: m.content.includes('<@') && m.content.includes('>'),
           replyingToBot: m.referenced_message_author_id && botNames[m.referenced_message_author_id]
         },
-        appliedClass: getMessageClasses(m)
+        appliedClass: getMessageClasses(m, botNames)
       }))
     })
   }, [messages, botNames])
@@ -379,6 +381,28 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
     fetchBotIds()
   }, [])
 
+  // Add near the top of MessageList component
+  useEffect(() => {
+    // Get last 3 messages
+    const recentMessages = messages.slice(-3)
+    
+    console.log('🍉 MessageList Bot Check:', {
+      botNames,
+      recentMessages: recentMessages.map(m => ({
+        id: m.id,
+        content: m.content.substring(0, 50),
+        author: m.author_username,
+        flags: {
+          isFromBot: m.isFromBot,
+          isBotMention: m.isBotMention,
+          replyingToBot: m.replyingToBot
+        },
+        sender_id: m.sender_id,
+        referenced_message_author_id: m.referenced_message_author_id
+      }))
+    })
+  }, [messages, botNames])
+
   return (
     <div ref={messageListRef} className="message-list h-full overflow-y-auto relative">
       {loading ? (
@@ -390,7 +414,7 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
           {messages.map((message) => (
             <div 
               key={message.id} 
-              className={getMessageClasses(message)}
+              className={getMessageClasses(message, botNames)}
             >
               {/* Show referenced message if it exists */}
               {message.referenced_message_id && (
