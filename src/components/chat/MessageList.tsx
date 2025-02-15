@@ -160,17 +160,17 @@ function getMessageClasses(message: Message): string {
   const baseClasses = "p-4 rounded-lg group relative"
   
   // Messages FROM bots get a purple gradient
-  if (message.is_from_bot) {
+  if (message.isFromBot) {
     return `${baseClasses} bg-gradient-to-r from-purple-900/50 to-purple-800/30`
   }
   
   // Messages that @mention bots get a blue tint
-  if (message.is_bot_mention) {
+  if (message.isBotMention) {
     return `${baseClasses} bg-blue-900/30`
   }
   
   // Messages replying to bots get a different purple tint
-  if (message.replying_to_bot) {
+  if (message.replyingToBot) {
     return `${baseClasses} bg-purple-800/20`
   }
   
@@ -355,9 +355,9 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
         id: m.id,
         content: m.content.substring(0, 50),
         flags: {
-          is_from_bot: botNames[m.sender_id] || false,
-          is_bot_mention: m.content.includes('<@') && m.content.includes('>'),
-          replying_to_bot: m.referenced_message_author_id && botNames[m.referenced_message_author_id]
+          isFromBot: botNames[m.sender_id] || false,
+          isBotMention: m.content.includes('<@') && m.content.includes('>'),
+          replyingToBot: m.referenced_message_author_id && botNames[m.referenced_message_author_id]
         },
         appliedClass: getMessageClasses(m)
       }))

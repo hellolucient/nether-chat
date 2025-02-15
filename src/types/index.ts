@@ -10,6 +10,7 @@ export interface Message {
   channel_id: string
   sender_id: string
   author_username: string
+  author_display_name: string
   sent_at: string
   referenced_message_id: string | null
   referenced_message_author_id: string | null
