@@ -159,18 +159,18 @@ const replaceBotMentions = (content: string, botNames: Record<string, string>) =
 function getMessageClasses(message: Message): string {
   const baseClasses = "p-4 rounded-lg group relative"
   
-  if (message.isFromBot) {
-    // Messages FROM bots get a purple gradient
+  // Messages FROM bots get a purple gradient
+  if (message.is_from_bot) {
     return `${baseClasses} bg-gradient-to-r from-purple-900/50 to-purple-800/30`
   }
   
-  if (message.isBotMention) {
-    // Messages that @mention bots get a blue tint
+  // Messages that @mention bots get a blue tint
+  if (message.is_bot_mention) {
     return `${baseClasses} bg-blue-900/30`
   }
   
-  if (message.replyingToBot) {
-    // Messages replying to bots get a different purple tint
+  // Messages replying to bots get a different purple tint
+  if (message.replying_to_bot) {
     return `${baseClasses} bg-purple-800/20`
   }
   
@@ -205,10 +205,11 @@ function formatBotMentions(content: string, botNames: Record<string, string>) {
   })
 }
 
-export function MessageList({ messages, ...props }: MessageListProps) {
+export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo }: MessageListProps) {
   const messageListRef = useRef<HTMLDivElement>(null)
   const [botNames, setBotNames] = useState<Record<string, string>>({})
   const [referencedAuthors, setReferencedAuthors] = useState<Record<string, string>>({})
+  const [botIds, setBotIds] = useState<string[]>([])
   
   // Add debug logging for messages and bot names
   useEffect(() => {
@@ -274,7 +275,7 @@ export function MessageList({ messages, ...props }: MessageListProps) {
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages, props.channelId])
+  }, [messages, channelId])
 
   useEffect(() => {
     console.log('🔄 MessageList: Received new messages:', messages)
@@ -340,33 +341,47 @@ export function MessageList({ messages, ...props }: MessageListProps) {
   useEffect(() => {
     console.log('Message flags:', messages.map(m => ({
       content: m.content,
-      isFromBot: m.isFromBot,
-      isBotMention: m.isBotMention,
-      replyingToBot: m.replyingToBot
+      isFromBot: botNames[m.sender_id] || false,
+      isBotMention: m.content.includes('<@') && m.content.includes('>'),
+      replyingToBot: m.referenced_message_author_id && botNames[m.referenced_message_author_id]
     })))
-  }, [messages])
+  }, [messages, botNames])
 
-  // Add this near the top of MessageList component
+  // Add this effect to check all messages' styling
   useEffect(() => {
-    console.log('🎨 Styling Debug:', messages.map(m => ({
-      content: m.content.substring(0, 50),
-      flags: {
-        isFromBot: m.isFromBot,
-        isBotMention: m.isBotMention,
-        replyingToBot: m.replyingToBot
-      },
-      appliedClass: getMessageClasses({
-        ...m,
-        isFromBot: m.isFromBot,
-        isBotMention: m.isBotMention,
-        replyingToBot: m.replyingToBot
-      })
-    })))
-  }, [messages])
+    console.log('🎨 Message Styling Debug:', {
+      totalMessages: messages.length,
+      messagesWithFlags: messages.map(m => ({
+        id: m.id,
+        content: m.content.substring(0, 50),
+        flags: {
+          is_from_bot: botNames[m.sender_id] || false,
+          is_bot_mention: m.content.includes('<@') && m.content.includes('>'),
+          replying_to_bot: m.referenced_message_author_id && botNames[m.referenced_message_author_id]
+        },
+        appliedClass: getMessageClasses(m)
+      }))
+    })
+  }, [messages, botNames])
+
+  // Fetch bot IDs once when component mounts
+  useEffect(() => {
+    const fetchBotIds = async () => {
+      const { data: bots } = await supabase
+        .from('discord_bots')
+        .select('discord_id')
+      
+      if (bots) {
+        setBotIds(bots.map(bot => bot.discord_id))
+      }
+    }
+    
+    fetchBotIds()
+  }, [])
 
   return (
     <div ref={messageListRef} className="message-list h-full overflow-y-auto relative">
-      {props.loading ? (
+      {loading ? (
         <div className="absolute inset-0 flex justify-center items-center bg-black/50">
           <LoadingSpinner />
         </div>
@@ -376,15 +391,6 @@ export function MessageList({ messages, ...props }: MessageListProps) {
             <div 
               key={message.id} 
               className={getMessageClasses(message)}
-              onClick={() => console.log('🎨 Message Styling:', {
-                content: message.content,
-                flags: {
-                  isFromBot: message.isFromBot,
-                  isBotMention: message.isBotMention,
-                  replyingToBot: message.replyingToBot
-                },
-                appliedClass: getMessageClasses(message)
-              })}
             >
               {/* Show referenced message if it exists */}
               {message.referenced_message_id && (
@@ -392,7 +398,6 @@ export function MessageList({ messages, ...props }: MessageListProps) {
                   <div className="text-gray-400 text-sm">
                     <div className="flex items-center gap-2">
                       <span>
-                        {/* First show who wrote the referenced message */}
                         <span className="text-purple-300">
                           @{message.referenced_message_author_id && (
                             botNames[message.referenced_message_author_id] || 
@@ -401,7 +406,6 @@ export function MessageList({ messages, ...props }: MessageListProps) {
                           )}
                         </span>
                         {' '}
-                        {/* Then show any @mentions in the message content in bold */}
                         {message.referenced_message_content && 
                           message.referenced_message_content.split(' ').map((word, i) => {
                             if (word.startsWith('<@') && word.endsWith('>')) {
@@ -426,14 +430,16 @@ export function MessageList({ messages, ...props }: MessageListProps) {
               {/* Author and timestamp */}
               <div className="flex items-center gap-2 mb-1">
                 <span className="font-medium text-purple-300">
-                  {message.author_username}
-                  {message.isFromBot && <span className="ml-2 text-xs bg-purple-600 px-2 py-0.5 rounded">APP</span>}
+                  {message.author_display_name}
+                  {botIds.includes(message.sender_id) && (
+                    <span className="ml-2 text-xs bg-purple-600 px-2 py-0.5 rounded">APP</span>
+                  )}
                 </span>
                 <span className="text-xs text-gray-400">
                   {formatDate(message.sent_at)}
                 </span>
                 <button
-                  onClick={() => props.onReplyTo(message)}
+                  onClick={() => onReplyTo(message)}
                   className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-purple-300 text-sm"
                 >
                   Reply
