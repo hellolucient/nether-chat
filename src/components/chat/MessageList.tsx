@@ -80,13 +80,13 @@ function MessageContent({ message }: { message: Message }) {
   }
 
   // If it's a sticker message
-  if (message.sticker_items?.length) {
+  if (message.stickers?.length) {
     return (
       <div className="mt-1">
-        {message.sticker_items.map((sticker, index) => (
+        {message.stickers.map((sticker, index) => (
           <div key={`sticker-${index}`} className="max-w-[160px]">
             <img
-              src={`https://media.discordapp.net/stickers/${sticker.id}.png`}
+              src={sticker.url}
               alt={sticker.name || 'Sticker'}
               className="rounded-lg"
             />
