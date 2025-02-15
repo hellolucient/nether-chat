@@ -36,13 +36,14 @@ export async function POST(request: Request) {
       id: data.id,
       channel_id: data.channel_id,
       sender_id: data.author.id,
-      author_username: data.member?.displayName || data.author.displayName || data.author.username,
+      author_username: data.author.username,
+      author_display_name: data.member?.displayName || data.author.displayName || data.author.username,
       content: data.content,
       sent_at: new Date(data.timestamp).toISOString(),
-      // Add flags for UI styling
-      is_from_bot: isFromBot,
-      is_bot_mention: mentionsBot,
-      replying_to_bot: replyingToBot,
+      // Add back the bot flags
+      isFromBot: isFromBot,
+      isBotMention: mentionsBot,
+      replyingToBot: replyingToBot,
       // Add reply data
       referenced_message_id: data.referenced_message?.id || null,
       referenced_message_author_id: data.referenced_message?.author?.id || null,
