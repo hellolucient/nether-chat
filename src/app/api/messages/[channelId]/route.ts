@@ -77,7 +77,11 @@ function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message 
     isFromBot: isFromBot,
     isBotMention: isBotMention,
     replyingToBot: replyingToBot,
-    attachments: Array.from(msg.attachments.values()),
+    attachments: Array.from(msg.attachments.values()).map(a => ({
+      url: a.url,
+      content_type: a.contentType || undefined,
+      filename: a.name
+    })),
     embeds: msg.embeds,
     stickers: Array.from(msg.stickers.values()),
     sticker_items: Array.from(msg.sticker_items?.values() || [])
