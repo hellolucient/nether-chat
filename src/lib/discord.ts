@@ -400,15 +400,15 @@ export async function getChannelMessages(channelId: string): Promise<AppMessage[
           content: msg.content,
           channel_id: msg.channelId,
           sender_id: msg.author.id,
-          author_username: msg.member?.displayName || msg.author.displayName || msg.author.username,
+          author_username: msg.author.username,
+          author_display_name: msg.member?.displayName || msg.author.displayName || msg.author.username,
           sent_at: msg.createdAt.toISOString(),
           referenced_message_id: msg.reference?.messageId || null,
           referenced_message_author_id: referencedAuthorId,
           referenced_message_content: referencedContent,
-          stickers: [],
           attachments: [],
           embeds: [],
-          sticker_items: [],
+          stickers: [],
           isFromBot: msg.author.bot,
           isBotMention: msg.mentions.users.some(user => 
             bots?.some(bot => bot.discord_id === user.id) ?? false
