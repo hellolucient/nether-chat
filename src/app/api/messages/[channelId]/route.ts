@@ -23,6 +23,10 @@ type BotData = {
   bot_name: string
 }
 
+// Add color helper at top of file
+const purple = (text: string) => `\x1b[35m${text}\x1b[0m`
+const dim = (text: string) => `\x1b[2m${text}\x1b[0m`
+
 // Helper function to transform Discord message to our format
 function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message {
   // Add debug log with distinctive icon
@@ -116,69 +120,91 @@ export async function GET(req: NextRequest, context: Context) {
 
 // POST handler for sending messages
 export async function POST(request: Request, { params }: Context) {
-  const requestId = Math.random().toString(36).substring(7) // Generate unique ID for this request
+  const requestId = Math.random().toString(36).substring(7)
+  const log = (emoji: string, msg: string, data?: any) => {
+    console.log(purple(`${emoji} [${requestId}] ${msg}`), data ? dim(JSON.stringify(data)) : '')
+  }
   
   try {
     const { channelId } = params
     const { content, type = 'text', url } = await request.json()
     const walletAddress = request.headers.get('x-wallet-address')
 
-    console.log(`🚀 [${requestId}] New message request:`, {
+    log('🚀', 'New image message:', {
       channelId,
       type,
       hasContent: !!content,
       hasUrl: !!url,
-      wallet: walletAddress?.substring(0, 8)
+      urlLength: url?.length
     })
 
     // Get bot token for this wallet
-    console.log(`🔍 [${requestId}] Fetching bot token...`)
+    log('🔍', 'Fetching bot token...')
     const { data: botAssignment, error: botError } = await supabase
       .from('bot_assignments')
       .select(`
         discord_bots (
           bot_token,
-          bot_name
+          bot_name,
+          discord_id
         )
       `)
       .eq('wallet_address', walletAddress)
       .single()
 
     if (botError) {
-      console.error(`❌ [${requestId}] Bot lookup error:`, botError)
+      log('❌', 'Bot lookup error:', botError)
       return NextResponse.json({ error: 'Failed to find bot' }, { status: 400 })
     }
 
-    console.log(`✅ [${requestId}] Found bot:`, {
-      hasToken: !!botAssignment?.discord_bots?.[0]?.bot_token,
-      botName: botAssignment?.discord_bots?.[0]?.bot_name
+    const bot = botAssignment?.discord_bots?.[0]
+    log('✅', 'Found bot:', {
+      hasToken: !!bot?.bot_token,
+      botName: bot?.bot_name,
+      botId: bot?.discord_id
     })
 
     // Initialize Discord client
-    console.log(`🤖 [${requestId}] Initializing Discord client...`)
+    log('🤖', 'Initializing Discord client...')
     const client = new Client({ intents: [] })
     
     try {
-      await client.login(botAssignment.discord_bots[0].bot_token)
-      console.log(`✅ [${requestId}] Bot logged in`)
+      await client.login(bot.bot_token)
+      log('✅', 'Bot logged in')
       
       const channel = await client.channels.fetch(channelId) as TextChannel
-      console.log(`✅ [${requestId}] Channel fetched:`, channel.name)
+      log('✅', 'Channel fetched:', {
+        name: channel.name,
+        id: channel.id
+      })
 
       // Prepare message
       const messageOptions: any = {
-        content: content || '\u200B', // Use zero-width space if no content
+        content: content || '\u200B',
       }
 
       if (type === 'image' && url) {
-        console.log(`📸 [${requestId}] Adding image:`, { url })
+        log('📸', 'Processing image:', { 
+          url,
+          urlLength: url.length,
+          isValidUrl: url.startsWith('http'),
+          contentType: url.split('.').pop()
+        })
         messageOptions.files = [url]
       }
 
       // Send message
-      console.log(`📤 [${requestId}] Sending message...`)
+      log('📤', 'Sending message:', messageOptions)
       const sent = await channel.send(messageOptions)
-      console.log(`✅ [${requestId}] Message sent:`, sent.id)
+      log('✅', 'Message sent:', {
+        id: sent.id,
+        hasAttachments: sent.attachments.size > 0,
+        attachmentInfo: Array.from(sent.attachments.values()).map(a => ({
+          id: a.id,
+          url: a.url,
+          size: a.size
+        }))
+      })
 
       await client.destroy()
       return NextResponse.json({ 
@@ -187,15 +213,14 @@ export async function POST(request: Request, { params }: Context) {
       })
 
     } catch (discordError) {
-      console.error(`❌ [${requestId}] Discord error:`, {
+      log('❌', 'Discord error:', {
         error: discordError,
         message: discordError instanceof Error ? discordError.message : 'Unknown error'
       })
       throw discordError
     }
-
   } catch (error) {
-    console.error(`❌ [${requestId}] Request failed:`, {
+    log('❌', 'Request failed:', {
       error,
       message: error instanceof Error ? error.message : 'Unknown error'
     })
