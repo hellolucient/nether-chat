@@ -142,12 +142,20 @@ export async function initializeDiscordBot() {
           // Get bot name if message is from one of our bots
           const botName = bots?.find(b => b.discord_id === message.author.id)?.bot_name
 
-          // Log raw attachment data
+          // Enhanced attachment logging
           if (message.attachments.size > 0) {
-            console.log(`[${ENV}] 🖼️ Processing attachments:`, {
+            console.log('📸 Discord: Received message with attachments:', {
               messageId: message.id,
               attachmentCount: message.attachments.size,
-              firstAttachmentUrl: Array.from(message.attachments.values())[0]?.url
+              attachments: Array.from(message.attachments.values()).map(a => ({
+                id: a.id,
+                url: a.url,
+                proxyURL: a.proxyURL,
+                contentType: a.contentType,
+                size: a.size,
+                width: a.width,
+                height: a.height
+              }))
             })
           }
 
@@ -164,63 +172,57 @@ export async function initializeDiscordBot() {
               (await message.fetchReference()).author.id : null,
             referenced_message_content: message.reference ? 
               (await message.fetchReference()).content : null,
-            // Update attachment handling with more fields
-            attachments: message.attachments ? Array.from(message.attachments.values()).map(attachment => ({
-              url: attachment.url,
-              content_type: attachment.contentType || 'image/unknown',
-              filename: attachment.name,
-              size: attachment.size,
-              proxy_url: attachment.proxyURL,  // Add proxy URL as backup
-              width: attachment.width,         // Add dimensions if available
-              height: attachment.height
-            })) : []
+            attachments: message.attachments.size > 0 ? 
+              Array.from(message.attachments.values()).map(a => ({
+                url: a.url,
+                proxyURL: a.proxyURL, // Add proxy URL as backup
+                content_type: a.contentType,
+                filename: a.name,
+                size: a.size,
+                width: a.width,
+                height: a.height
+              })) : [],
+            isFromBot: message.author.bot,
+            isBotMention: message.mentions.users.some(user => 
+              bots?.some(bot => bot.discord_id === user.id)
+            ),
+            replyingToBot: message.reference ? 
+              bots?.some(bot => bot.discord_id === message.reference?.messageId) : 
+              false
           }
 
-          // Log what we're about to store
-          console.log('📝 Storing message data:', {
-            id: messageData.id,
-            content: messageData.content.substring(0, 50),
+          // Log the full message data before storage
+          console.log('💾 Discord: Storing message with attachments:', {
+            messageId: messageData.id,
             attachmentCount: messageData.attachments.length,
-            attachments: messageData.attachments
+            firstAttachment: messageData.attachments[0]
           })
 
-          // Store in Supabase with explicit JSONB casting
+          // Store in Supabase
           const { error: messageError } = await supabase
             .from('messages')
-            .upsert({
-              ...messageData,
-              attachments: messageData.attachments.length > 0 ? messageData.attachments : null
-            }, {
-              onConflict: 'id'
-            })
+            .upsert(messageData)
 
           if (messageError) {
-            console.error(`[${ENV}] ❌ Supabase error:`, {
-              error: messageError,
-              messageId: message.id,
-              timestamp: new Date().toISOString()
-            })
+            console.error('❌ Discord: Error storing message:', messageError)
             throw messageError
           }
 
-          // Verify the stored data
+          // Verify storage
           const { data: storedMessage } = await supabase
             .from('messages')
             .select('*')
             .eq('id', message.id)
             .single()
 
-          console.log(`[${ENV}] ✅ Message stored:`, {
-            messageId: message.id,
-            hasAttachments: storedMessage.attachments !== null,
-            timestamp: new Date().toISOString()
+          console.log('✅ Discord: Verified stored message:', {
+            id: storedMessage.id,
+            hasAttachments: storedMessage.attachments?.length > 0,
+            attachmentCount: storedMessage.attachments?.length || 0,
+            firstAttachment: storedMessage.attachments?.[0]
           })
         } catch (error) {
-          console.error(`[${ENV}] 🚨 Processing error:`, {
-            error,
-            messageId: message.id,
-            timestamp: new Date().toISOString()
-          })
+          console.error('❌ Discord: Error processing message:', error)
         }
       })
     }

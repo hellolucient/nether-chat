@@ -212,3 +212,65 @@ Changes made:
 4. More aggressive client reuse
 
 Status: Pending confirmation - This should handle Discord's rate limits more gracefully
+
+# FIXES
+
+1. Channel Access Error for Admin Wallet
+```
+Issue: Admin wallet can't access certain channels
+Location: src/app/api/channels/route.ts
+Current behavior:
+- Admin wallet should have access to all channels
+- Some channels not showing up in list
+```
+- Need to verify channel permissions
+- Check bot token permissions
+- Add admin override for channel access
+
+2. Message Author Display Name Not Showing on Initial Load
+```
+Issue: Display names missing until refresh
+Location: src/components/chat/MessageList.tsx
+Current behavior:
+- Username shows instead of display name
+- Fixed after manual refresh
+```
+- Need to update message sync to include display names
+- May need to update message sync for referenced messages
+
+3. Bot Message Flags Inconsistency
+```
+Issue: Message styling lost due to flag name mismatch
+Location: src/app/api/discord/messages/route.ts
+```
+
+4. Message Send Failed for Some Users
+```
+Error: 
+- 500 (Internal Server Error) when POSTing to /api/messages
+- "Message send failed: Failed to send message to Discord"
+Current behavior:
+- Works for some users (admin)
+- Fails for other users
+- Same URL/environment
+```
+- Need to investigate message sending flow
+- Check bot token lookup and validation
+- Verify bot assignments for non-admin users
+- Add better error logging in /api/messages route
+- Check Discord client initialization per user
+
+5. Image Upload Issues
+```
+Error:
+- Images upload to storage but don't appear in Discord
+- "Missing required fields" error when no text
+Current behavior:
+- Text portion of message sends successfully
+- Image URL not being included in Discord message
+- Requires text input even for image-only messages
+```
+- Fix image URL inclusion in message content
+- Remove text requirement for image uploads
+- Match behavior with GIFs/emojis
+- Add better error handling for image uploads

@@ -115,119 +115,72 @@ export async function GET(req: NextRequest, context: Context) {
 }
 
 // POST handler for sending messages
-export async function POST(request: Request, { params }: { params: { channelId: string } }) {
+export async function POST(request: Request, { params }: Context) {
   try {
-    const { content, type, url, reply, stickerId } = await request.json()
-    console.log('🔍 API: Received payload:', { content, type, url, reply, stickerId })
+    const { channelId } = params
+    const { content, type = 'text', url } = await request.json()
+    const walletAddress = request.headers.get('x-wallet-address')
 
-    // Get the wallet from the request headers
-    const wallet = request.headers.get('x-wallet-address')
-    if (!wallet) {
-      return NextResponse.json({ error: 'No wallet address provided' }, { status: 400 })
+    console.log('📨 Message request:', {
+      channelId,
+      type,
+      hasContent: !!content,
+      hasUrl: !!url,
+      wallet: walletAddress
+    })
+
+    // Allow image-only messages
+    if (!content && !url) {
+      return NextResponse.json(
+        { error: 'Message must have either content or an image' },
+        { status: 400 }
+      )
     }
 
-    // Get user's bot token
-    const { data: botData } = await supabase
-      .from('bot_tokens')
-      .select('bot_token')
-      .eq('wallet_address', wallet)
+    // Get bot token for this wallet
+    const { data: botAssignment } = await supabase
+      .from('bot_assignments')
+      .select('discord_bots!inner(bot_token)')
+      .eq('wallet_address', walletAddress)
       .single()
 
-    if (!botData?.bot_token) {
-      console.log('❌ No bot token found for wallet:', wallet)
-      return NextResponse.json({ error: 'No bot token found for this wallet' }, { status: 400 })
+    if (!botAssignment?.discord_bots?.bot_token) {
+      console.error('❌ No bot token found for wallet:', walletAddress)
+      return NextResponse.json(
+        { error: 'No bot token found for this wallet' },
+        { status: 400 }
+      )
     }
 
-    console.log('🤖 Using bot token for wallet:', wallet)
-
-    // Initialize Discord client with user's bot token
     const client = new Client({ intents: [] })
-    await client.login(botData.bot_token)
+    await client.login(botAssignment.discord_bots.bot_token)
 
-    const channel = await client.channels.fetch(params.channelId)
-    if (!(channel instanceof TextChannel)) {
-      throw new Error('Channel is not a text channel')
-    }
-
+    const channel = await client.channels.fetch(channelId) as TextChannel
+    
     // Prepare message options
     const messageOptions: any = {
       content: content || '',
     }
 
-    // Add reply reference if exists
-    if (reply?.messageReference) {
-      messageOptions.messageReference = reply.messageReference
-      if (reply.quotedContent) {
-        messageOptions.content = reply.quotedContent + (messageOptions.content ? '\n' + messageOptions.content : '')
-      }
-    }
-
     // Handle different message types
-    switch (type) {
-      case 'gif':
-        console.log('🎯 Handling GIF message:', { url, content })
-        messageOptions.files = [{
-          attachment: url,
-          name: 'gif.gif'
-        }]
-        break
-        
-      case 'image':
-        console.log('🖼️ Handling image message:', { url })
-        messageOptions.files = [url]
-        break
-        
-      case 'sticker':
-        if (stickerId) {
-          console.log('🏷️ Handling sticker message:', { stickerId })
-          try {
-            // Get sticker from sticker packs
-            const stickerPacks = await client.fetchStickerPacks()
-            let foundSticker = undefined as Sticker | undefined
-
-            // Search through all packs for the sticker
-            for (const pack of stickerPacks.values()) {
-              const packSticker = pack.stickers.get(stickerId)
-              if (packSticker) {
-                foundSticker = packSticker
-                break
-              }
-            }
-
-            // If not found in packs, try guild stickers
-            if (!foundSticker) {
-              const guildStickers = await channel.guild.stickers.fetch()
-              const guildSticker = guildStickers.get(stickerId)
-              if (guildSticker) {
-                foundSticker = guildSticker
-              }
-            }
-
-            if (!foundSticker) {
-              throw new Error('Sticker not found')
-            }
-
-            messageOptions.stickers = [foundSticker]
-            console.log('✅ Found sticker:', foundSticker.name)
-          } catch (error) {
-            console.error('❌ Error fetching sticker:', error)
-            throw new Error('Failed to fetch sticker')
-          }
-        }
-        break
-        
-      default:
-        console.log('📝 Handling text message')
-        break
+    if (type === 'image' && url) {
+      console.log('🖼️ Sending image message:', { url })
+      messageOptions.files = [url]
+      // If no content provided, add a blank space to prevent Discord API issues
+      if (!content) messageOptions.content = '\u200B'
     }
 
     console.log('📤 Sending message with options:', messageOptions)
     await channel.send(messageOptions)
-    console.log('✅ Message sent successfully to Discord')
-    await client.destroy() // Clean up the client connection
+    
+    await client.destroy()
     return NextResponse.json({ success: true })
+
   } catch (error) {
-    console.error('❌ Failed to send message to Discord:', error)
-    throw error
+    console.error('❌ Error sending message:', error)
+    return NextResponse.json(
+      { error: 'Failed to send message' },
+      { status: 500 }
+    )
   }
 } 
