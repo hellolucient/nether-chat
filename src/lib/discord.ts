@@ -295,7 +295,7 @@ export async function checkDiscordConnection() {
 // Update sendMessage function to require wallet address
 export async function sendMessage(
   channelId: string, 
-  content: string | { content: string, files: string[] },  // Allow both string and object with files
+  content: string | { type: 'image' | 'text' | 'sticker', content: string, url?: string },
   walletAddress: string,
   options?: { 
     messageReference?: { messageId: string },
@@ -312,22 +312,39 @@ export async function sendMessage(
 
     const textChannel = channel as BaseGuildTextChannel
     
-    // Handle both text and image messages
-    const messageOptions = {
-      ...(typeof content === 'string' 
-        ? { content } 
-        : { content: content.content, files: content.files }
-      ),
-      ...options?.messageReference ? {
-        reply: {
-          messageReference: options.messageReference.messageId,
-          failIfNotExists: false
-        }
-      } : {}
+    // Handle different message types
+    let messageOptions: any = {}
+
+    if (typeof content === 'object') {
+      switch (content.type) {
+        case 'image':
+          messageOptions = {
+            content: content.content || '',  // Allow empty content
+            files: [content.url]  // Send the image URL as a file
+          }
+          break
+        case 'sticker':
+          messageOptions = {
+            content: content.content,
+            stickers: [content.url]
+          }
+          break
+        default:
+          messageOptions = { content: content.content }
+      }
+    } else {
+      messageOptions = { content }
+    }
+
+    // Add reply if present
+    if (options?.messageReference) {
+      messageOptions.reply = {
+        messageReference: options.messageReference.messageId,
+        failIfNotExists: false
+      }
     }
 
     console.log('📨 Sending Discord message:', messageOptions)
-
     const message = await textChannel.send(messageOptions)
     return true
   } catch (error) {
