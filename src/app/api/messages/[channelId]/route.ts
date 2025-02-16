@@ -9,6 +9,7 @@ import {
 } from 'discord.js'
 import { Message } from '@/types' // Import our Message type
 import { Client } from 'discord.js'
+import { logger } from '@/lib/logger'
 
 // Define the context type exactly as Next.js expects
 type Context = {
@@ -121,16 +122,13 @@ export async function GET(req: NextRequest, context: Context) {
 // POST handler for sending messages
 export async function POST(request: Request, { params }: Context) {
   const requestId = Math.random().toString(36).substring(7)
-  const log = (emoji: string, msg: string, data?: any) => {
-    console.log(purple(`${emoji} [${requestId}] ${msg}`), data ? dim(JSON.stringify(data)) : '')
-  }
   
   try {
     const { channelId } = params
     const { content, type = 'text', url } = await request.json()
     const walletAddress = request.headers.get('x-wallet-address')
 
-    log('🚀', 'New image message:', {
+    logger.debug(`[${requestId}] 🚀 New image upload request`, {
       channelId,
       type,
       hasContent: !!content,
@@ -139,7 +137,7 @@ export async function POST(request: Request, { params }: Context) {
     })
 
     // Get bot token for this wallet
-    log('🔍', 'Fetching bot token...')
+    logger.debug(`[${requestId}] 🔍 Fetching bot token...`)
     const { data: botAssignment, error: botError } = await supabase
       .from('bot_assignments')
       .select(`
@@ -153,27 +151,27 @@ export async function POST(request: Request, { params }: Context) {
       .single()
 
     if (botError) {
-      log('❌', 'Bot lookup error:', botError)
+      logger.error(`[${requestId}] Bot lookup error`, botError)
       return NextResponse.json({ error: 'Failed to find bot' }, { status: 400 })
     }
 
     const bot = botAssignment?.discord_bots?.[0]
-    log('✅', 'Found bot:', {
+    logger.debug(`[${requestId}] ✅ Found bot:`, {
       hasToken: !!bot?.bot_token,
       botName: bot?.bot_name,
       botId: bot?.discord_id
     })
 
     // Initialize Discord client
-    log('🤖', 'Initializing Discord client...')
+    logger.debug(`[${requestId}] 🤖 Initializing Discord client...`)
     const client = new Client({ intents: [] })
     
     try {
       await client.login(bot.bot_token)
-      log('✅', 'Bot logged in')
+      logger.debug(`[${requestId}] ✅ Bot logged in`)
       
       const channel = await client.channels.fetch(channelId) as TextChannel
-      log('✅', 'Channel fetched:', {
+      logger.debug(`[${requestId}] ✅ Channel fetched:`, {
         name: channel.name,
         id: channel.id
       })
@@ -184,7 +182,7 @@ export async function POST(request: Request, { params }: Context) {
       }
 
       if (type === 'image' && url) {
-        log('📸', 'Processing image:', { 
+        logger.debug(`[${requestId}] 📸 Processing image:`, { 
           url,
           urlLength: url.length,
           isValidUrl: url.startsWith('http'),
@@ -194,9 +192,9 @@ export async function POST(request: Request, { params }: Context) {
       }
 
       // Send message
-      log('📤', 'Sending message:', messageOptions)
+      logger.debug(`[${requestId}] 📤 Sending message:`, messageOptions)
       const sent = await channel.send(messageOptions)
-      log('✅', 'Message sent:', {
+      logger.debug(`[${requestId}] ✅ Message sent:`, {
         id: sent.id,
         hasAttachments: sent.attachments.size > 0,
         attachmentInfo: Array.from(sent.attachments.values()).map(a => ({
@@ -213,17 +211,14 @@ export async function POST(request: Request, { params }: Context) {
       })
 
     } catch (discordError) {
-      log('❌', 'Discord error:', {
+      logger.error(`[${requestId}] Discord error`, {
         error: discordError,
         message: discordError instanceof Error ? discordError.message : 'Unknown error'
       })
       throw discordError
     }
   } catch (error) {
-    log('❌', 'Request failed:', {
-      error,
-      message: error instanceof Error ? error.message : 'Unknown error'
-    })
+    logger.error(`[${requestId}] Failed to send message`, error)
     return NextResponse.json(
       { error: 'Failed to send message' },
       { status: 500 }
