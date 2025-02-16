@@ -90,14 +90,16 @@ export async function initializeDiscordBot() {
       })
 
       client.on('messageCreate', async (message) => {
-        console.log('📨 Message listener triggered:', {
-          id: message.id,
-          content: message.content,
-          authorId: message.author.id,
-          channelId: message.channelId
-        })
-
+        // Add version/environment tag to logs
+        const ENV = process.env.VERCEL_ENV || 'development'
+        
         try {
+          console.log(`[${ENV}] 🎯 Message received:`, {
+            id: message.id,
+            hasAttachments: message.attachments.size > 0,
+            timestamp: new Date().toISOString()
+          })
+
           const { data: bots, error: botsError } = await supabase
             .from('discord_bots')
             .select('discord_id, bot_name')
@@ -142,15 +144,11 @@ export async function initializeDiscordBot() {
 
           // Log raw attachment data
           if (message.attachments.size > 0) {
-            console.log('🖼️ Raw Discord attachments:', Array.from(message.attachments.values()).map(a => ({
-              url: a.url,
-              contentType: a.contentType,
-              name: a.name,
-              size: a.size,
-              proxyURL: a.proxyURL,
-              height: a.height,
-              width: a.width
-            })))
+            console.log(`[${ENV}] 🖼️ Processing attachments:`, {
+              messageId: message.id,
+              attachmentCount: message.attachments.size,
+              firstAttachmentUrl: Array.from(message.attachments.values())[0]?.url
+            })
           }
 
           const messageData = {
@@ -197,7 +195,11 @@ export async function initializeDiscordBot() {
             })
 
           if (messageError) {
-            console.error('❌ Error storing message:', messageError)
+            console.error(`[${ENV}] ❌ Supabase error:`, {
+              error: messageError,
+              messageId: message.id,
+              timestamp: new Date().toISOString()
+            })
             throw messageError
           }
 
@@ -208,14 +210,17 @@ export async function initializeDiscordBot() {
             .eq('id', message.id)
             .single()
 
-          console.log('✅ Verified stored message:', {
-            id: storedMessage.id,
+          console.log(`[${ENV}] ✅ Message stored:`, {
+            messageId: message.id,
             hasAttachments: storedMessage.attachments !== null,
-            attachmentCount: storedMessage.attachments?.length || 0,
-            firstAttachment: storedMessage.attachments?.[0]
+            timestamp: new Date().toISOString()
           })
         } catch (error) {
-          console.error('❌ Error processing message:', error)
+          console.error(`[${ENV}] 🚨 Processing error:`, {
+            error,
+            messageId: message.id,
+            timestamp: new Date().toISOString()
+          })
         }
       })
     }
