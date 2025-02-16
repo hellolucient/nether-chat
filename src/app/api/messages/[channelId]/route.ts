@@ -116,72 +116,89 @@ export async function GET(req: NextRequest, context: Context) {
 
 // POST handler for sending messages
 export async function POST(request: Request, { params }: Context) {
+  const requestId = Math.random().toString(36).substring(7) // Generate unique ID for this request
+  
   try {
     const { channelId } = params
     const { content, type = 'text', url } = await request.json()
     const walletAddress = request.headers.get('x-wallet-address')
 
-    console.log('📨 Message request:', {
+    console.log(`🚀 [${requestId}] New message request:`, {
       channelId,
       type,
       hasContent: !!content,
       hasUrl: !!url,
-      wallet: walletAddress
+      wallet: walletAddress?.substring(0, 8)
     })
 
-    // Allow image-only messages
-    if (!content && !url) {
-      return NextResponse.json(
-        { error: 'Message must have either content or an image' },
-        { status: 400 }
-      )
-    }
-
     // Get bot token for this wallet
-    const { data: botAssignment } = await supabase
+    console.log(`🔍 [${requestId}] Fetching bot token...`)
+    const { data: botAssignment, error: botError } = await supabase
       .from('bot_assignments')
       .select(`
         discord_bots (
-          bot_token
+          bot_token,
+          bot_name
         )
       `)
       .eq('wallet_address', walletAddress)
-      .single() as { data: { discord_bots: { bot_token: string } } | null }
+      .single()
 
-    if (!botAssignment?.discord_bots?.[0]?.bot_token) {
-      console.error('❌ No bot token found for wallet:', walletAddress)
-      return NextResponse.json(
-        { error: 'No bot token found for this wallet' },
-        { status: 400 }
-      )
+    if (botError) {
+      console.error(`❌ [${requestId}] Bot lookup error:`, botError)
+      return NextResponse.json({ error: 'Failed to find bot' }, { status: 400 })
     }
 
+    console.log(`✅ [${requestId}] Found bot:`, {
+      hasToken: !!botAssignment?.discord_bots?.[0]?.bot_token,
+      botName: botAssignment?.discord_bots?.[0]?.bot_name
+    })
+
+    // Initialize Discord client
+    console.log(`🤖 [${requestId}] Initializing Discord client...`)
     const client = new Client({ intents: [] })
-    await client.login(botAssignment.discord_bots[0].bot_token)
-
-    const channel = await client.channels.fetch(channelId) as TextChannel
     
-    // Prepare message options
-    const messageOptions: any = {
-      content: content || '',
-    }
+    try {
+      await client.login(botAssignment.discord_bots[0].bot_token)
+      console.log(`✅ [${requestId}] Bot logged in`)
+      
+      const channel = await client.channels.fetch(channelId) as TextChannel
+      console.log(`✅ [${requestId}] Channel fetched:`, channel.name)
 
-    // Handle different message types
-    if (type === 'image' && url) {
-      console.log('🖼️ Sending image message:', { url })
-      messageOptions.files = [url]
-      // If no content provided, add a blank space to prevent Discord API issues
-      if (!content) messageOptions.content = '\u200B'
-    }
+      // Prepare message
+      const messageOptions: any = {
+        content: content || '\u200B', // Use zero-width space if no content
+      }
 
-    console.log('📤 Sending message with options:', messageOptions)
-    await channel.send(messageOptions)
-    
-    await client.destroy()
-    return NextResponse.json({ success: true })
+      if (type === 'image' && url) {
+        console.log(`📸 [${requestId}] Adding image:`, { url })
+        messageOptions.files = [url]
+      }
+
+      // Send message
+      console.log(`📤 [${requestId}] Sending message...`)
+      const sent = await channel.send(messageOptions)
+      console.log(`✅ [${requestId}] Message sent:`, sent.id)
+
+      await client.destroy()
+      return NextResponse.json({ 
+        success: true,
+        messageId: sent.id
+      })
+
+    } catch (discordError) {
+      console.error(`❌ [${requestId}] Discord error:`, {
+        error: discordError,
+        message: discordError instanceof Error ? discordError.message : 'Unknown error'
+      })
+      throw discordError
+    }
 
   } catch (error) {
-    console.error('❌ Error sending message:', error)
+    console.error(`❌ [${requestId}] Request failed:`, {
+      error,
+      message: error instanceof Error ? error.message : 'Unknown error'
+    })
     return NextResponse.json(
       { error: 'Failed to send message' },
       { status: 500 }
