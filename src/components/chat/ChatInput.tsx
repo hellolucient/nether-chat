@@ -51,6 +51,7 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
   const [sendStatus, setSendStatus] = useState<SendStatus>('idle')
   const [showStickerPicker, setShowStickerPicker] = useState(false)
   const [selectedSticker, setSelectedSticker] = useState<{id: string, url: string} | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
 
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
@@ -127,37 +128,35 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    console.log('❤️ [1] Submit triggered:', {
-      hasContent: !!message,
-      hasImage: !!selectedImage,
-      hasSticker: !!selectedSticker
-    })
+    // Change validation to allow image-only messages
+    if (!message.trim() && !selectedImage && !selectedSticker) {
+      console.log('❤️ No content to send')
+      return
+    }
 
     try {
-      console.log('💙 [2] Preparing request:', {
-        wallet: publicKey?.toString(),
-        channelId
-      })
-
       if (!publicKey) {
         console.error('💔 No wallet connected')
         return
       }
 
+      setSendStatus('sending')
       let messageContent: MessageContent
 
       if (selectedImage) {
+        console.log('💜 Processing image upload')
+        setUploading(true)
         const imageUrl = await uploadImage(selectedImage)
+        setUploading(false)
+        console.log('💜 Image uploaded:', { imageUrl })
+        
         messageContent = {
           type: 'image',
-          content: message,
-          url: imageUrl,
-          reply: replyTo ? {
-            messageReference: { messageId: replyTo.id },
-            quotedContent: replyTo.content,
-            author: { username: replyTo.author_username }
-          } : undefined
-        } as MessageContent
+          content: message || '',
+          url: imageUrl
+        }
+
+        console.log('💜 Message content prepared:', messageContent)
       } else if (selectedSticker) {
         messageContent = {
           type: 'sticker',
@@ -181,31 +180,6 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
           } : undefined
         } as MessageContent
       }
-
-      const response = await fetch('/api/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-wallet-address': publicKey.toString()
-        },
-        body: JSON.stringify({
-          channelId,
-          content: messageContent.content
-        })
-      })
-
-      console.log('💚 [3] Response received:', {
-        status: response.status,
-        ok: response.ok
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        console.error('💔 Send failed:', error)
-        throw new Error(error.error || 'Failed to send message')
-      }
-
-      console.log('🧡 Message sent successfully')
 
       // Send message and wait for it to complete
       await onSendMessage(messageContent)
@@ -234,11 +208,10 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      if (file.size > 8 * 1024 * 1024) { // 8MB limit
-        alert('Image must be less than 8MB')
-        return
-      }
       setSelectedImage(file)
+      // Create preview URL
+      const previewUrl = URL.createObjectURL(file)
+      setImagePreview(previewUrl)
     }
   }
 
@@ -248,6 +221,14 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
       inputRef.current?.focus()
     }
   }, [replyTo])
+
+  useEffect(() => {
+    return () => {
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview)
+      }
+    }
+  }, [imagePreview])
 
   function isGifUrl(content: string): boolean {
     const trimmed = content.trim().toLowerCase()
@@ -271,7 +252,7 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
   const renderSendButton = () => (
     <button
       type="submit"
-      disabled={!message.trim() && !selectedImage && !selectedSticker}
+      disabled={(!message.trim() && !selectedImage && !selectedSticker)}
       className={buttonClassName}
     >
       {sendStatus === 'sending' ? (
@@ -332,15 +313,21 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
         </div>
       )}
 
-      {selectedImage && (
-        <div className="mb-2 flex items-center gap-2 text-sm text-gray-400">
-          <span>{selectedImage.name}</span>
-          <button 
-            type="button"
-            onClick={() => setSelectedImage(null)}
-            className="hover:text-gray-300"
+      {imagePreview && (
+        <div className="relative inline-block">
+          <img 
+            src={imagePreview} 
+            alt="Upload preview" 
+            className="max-h-32 rounded-md"
+          />
+          <button
+            onClick={() => {
+              setSelectedImage(null)
+              setImagePreview(null)
+            }}
+            className="absolute -top-2 -right-2 bg-purple-600 hover:bg-purple-700 rounded-full p-1"
           >
-            <XMarkIcon className="w-4 h-4" />
+            <XMarkIcon className="h-4 w-4 text-white" />
           </button>
         </div>
       )}
