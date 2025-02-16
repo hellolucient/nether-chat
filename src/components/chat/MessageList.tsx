@@ -208,6 +208,12 @@ function formatBotMentions(content: string, botNames: Record<string, string>) {
 }
 
 export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo }: MessageListProps) {
+  console.log('❤️ MessageList render:', { 
+    messageCount: messages.length,
+    channelId,
+    loading 
+  })
+
   const messageListRef = useRef<HTMLDivElement>(null)
   const [botNames, setBotNames] = useState<Record<string, string>>({})
   const [referencedAuthors, setReferencedAuthors] = useState<Record<string, string>>({})
@@ -402,6 +408,27 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
       }))
     })
   }, [messages, botNames])
+
+  useEffect(() => {
+    console.log('💙 Messages updated:', {
+      count: messages.length,
+      firstMessage: messages[0]?.content.substring(0, 50),
+      lastMessage: messages[messages.length - 1]?.content.substring(0, 50)
+    })
+  }, [messages])
+
+  // Add to fetchMessages
+  const fetchMessages = async () => {
+    try {
+      console.log('💚 Fetching messages for channel:', channelId)
+      // ... existing fetch code ...
+      console.log('💜 Fetch complete:', { 
+        messageCount: messages.length 
+      })
+    } catch (error) {
+      console.error('💔 Error fetching messages:', error)
+    }
+  }
 
   return (
     <div ref={messageListRef} className="message-list h-full overflow-y-auto relative">

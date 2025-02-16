@@ -4,6 +4,15 @@ import { sendMessage, checkDiscordConnection } from '@/lib/discord'
 import { supabase } from '@/lib/supabase'
 import { PostgrestSingleResponse } from '@supabase/supabase-js'
 
+// Add interface at the top
+interface BotAssignment {
+  bot_id: string
+  discord_bots: {
+    bot_token: string
+    bot_name: string
+  }
+}
+
 export async function POST(request: Request) {
   try {
     console.log('❤️ [1] Message request received')
@@ -16,7 +25,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No wallet address provided' }, { status: 400 })
     }
 
-    // Get bot assignment
+    // Add type annotation to the query result
     const { data: botAssignment, error: botError } = await supabase
       .from('bot_assignments')
       .select(`
@@ -27,7 +36,7 @@ export async function POST(request: Request) {
         )
       `)
       .eq('wallet_address', walletAddress)
-      .single()
+      .single() as { data: BotAssignment | null, error: any }
 
     console.log('💚 [3] Bot assignment lookup:', { 
       hasData: !!botAssignment,
