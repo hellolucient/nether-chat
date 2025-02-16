@@ -140,35 +140,61 @@ export async function initializeDiscordBot() {
           // Get bot name if message is from one of our bots
           const botName = bots?.find(b => b.discord_id === message.author.id)?.bot_name
 
-          // Store message in Supabase
+          // Prepare message data with attachments in JSONB
           const messageData = {
             id: message.id,
             channel_id: message.channelId,
             sender_id: message.author.id,
-            author_username: message.member?.displayName || message.author.displayName || message.author.username,
+            author_username: message.author.username,
+            author_display_name: message.member?.displayName || message.author.displayName || message.author.username,
             content: message.content,
-            sent_at: message.createdAt.toISOString(),
+            sent_at: new Date(message.createdTimestamp).toISOString(),
             referenced_message_id: message.reference?.messageId || null,
             referenced_message_author_id: message.reference ? 
               (await message.fetchReference()).author.id : null,
             referenced_message_content: message.reference ? 
-              (await message.fetchReference()).content : null
+              (await message.fetchReference()).content : null,
+            // Store attachments in JSONB column
+            attachments: message.attachments ? Array.from(message.attachments.values()).map(attachment => ({
+              url: attachment.url,
+              content_type: attachment.contentType,
+              filename: attachment.name,
+              size: attachment.size
+            })) : []
           }
 
-          console.log('📝 Attempting to store message:', messageData)
-
-          const { error } = await supabase
+          // First store the message
+          const { error: messageError } = await supabase
             .from('messages')
-            .upsert(messageData, {
+            .upsert({
+              ...messageData,
+              attachments: messageData.attachments.length > 0 ? messageData.attachments : null
+            }, {
               onConflict: 'id'
             })
 
-          if (error) {
-            console.error('❌ Supabase error:', error)
-            throw error
+          if (messageError) throw messageError
+
+          // Then store attachments in separate table if any exist
+          if (messageData.attachments.length > 0) {
+            const attachmentRecords = messageData.attachments.map(attachment => ({
+              message_id: message.id,
+              url: attachment.url,
+              content_type: attachment.content_type,
+              filename: attachment.filename
+            }))
+
+            const { error: attachmentError } = await supabase
+              .from('attachments')
+              .upsert(attachmentRecords)
+
+            if (attachmentError) {
+              console.error('❌ Error storing attachments:', attachmentError)
+              // Don't throw - we still saved the message successfully
+            }
           }
 
-          console.log('✅ Supabase response:', { error })
+          console.log('✅ Message and attachments stored successfully')
         } catch (error) {
           console.error('❌ Error processing message:', error)
         }
@@ -269,7 +295,7 @@ export async function checkDiscordConnection() {
 // Update sendMessage function to require wallet address
 export async function sendMessage(
   channelId: string, 
-  content: string,
+  content: string | { content: string, files: string[] },  // Allow both string and object with files
   walletAddress: string,
   options?: { 
     messageReference?: { messageId: string },
@@ -286,9 +312,12 @@ export async function sendMessage(
 
     const textChannel = channel as BaseGuildTextChannel
     
-    // Properly format the message options for a reply
+    // Handle both text and image messages
     const messageOptions = {
-      content,
+      ...(typeof content === 'string' 
+        ? { content } 
+        : { content: content.content, files: content.files }
+      ),
       ...options?.messageReference ? {
         reply: {
           messageReference: options.messageReference.messageId,
@@ -296,6 +325,8 @@ export async function sendMessage(
         }
       } : {}
     }
+
+    console.log('📨 Sending Discord message:', messageOptions)
 
     const message = await textChannel.send(messageOptions)
     return true

@@ -62,72 +62,51 @@ function formatDate(dateString: string) {
 }
 
 function MessageContent({ message }: { message: Message }) {
-  // If message has attachments (images)
-  if (message.attachments?.length) {
+  // First check for attachments (images)
+  if (message.attachments && message.attachments.length > 0) {
+    const images = message.attachments.filter(a => 
+      a.content_type?.startsWith('image/') || a.url.match(/\.(jpg|jpeg|png|gif)$/i)
+    )
+    
     return (
-      <div className="mt-1">
-        {message.attachments.map((attachment, index) => (
-          <div key={`attachment-${index}`} className="max-w-[300px]">
+      <div className="space-y-2">
+        {message.content && (
+          <p className="text-white whitespace-pre-wrap">{message.content}</p>
+        )}
+        
+        {images.map((image, index) => (
+          <div key={index} className="max-w-[300px]">
             <img 
-              src={attachment.url} 
-              alt={attachment.filename || 'Attached image'}
-              className="rounded-lg"
+              src={image.url} 
+              alt={image.filename || 'Uploaded image'}
+              className="rounded-lg w-full"
+              loading="lazy"
             />
           </div>
         ))}
       </div>
     )
   }
-
-  // If it's a sticker message
-  if (message.stickers?.length) {
+  
+  // Then check for GIFs
+  if (message.content?.startsWith('__GIF__')) {
+    const gifUrl = message.content.replace('__GIF__', '')
     return (
-      <div className="mt-1">
-        {message.stickers.map((sticker, index) => (
-          <div key={`sticker-${index}`} className="max-w-[160px]">
-            <img
-              src={sticker.url}
-              alt={sticker.name || 'Sticker'}
-              className="rounded-lg"
-            />
-          </div>
-        ))}
+      <div className="max-w-[300px]">
+        <img 
+          src={gifUrl} 
+          alt="GIF" 
+          className="rounded-lg w-full"
+          loading="lazy"
+        />
       </div>
     )
   }
 
-  // If the message has a GIF/image embed or sticker
-  if (message.embeds?.some(embed => embed.type === 'gif' || embed.type === 'image') || message.stickers?.length) {
-    return (
-      <div className="mt-1">
-        {message.embeds?.map((embed, index) => (
-          <div key={`embed-${index}`} className="max-w-[300px]">
-            <img 
-              src={embed.url || embed.image?.url} 
-              alt="GIF" 
-              className="rounded-lg"
-            />
-          </div>
-        ))}
-
-        {message.stickers?.map((sticker, index) => (
-          <div key={`sticker-${index}`} className="max-w-[200px]">
-            <img
-              src={sticker.url}
-              alt={sticker.name}
-              className="rounded-lg"
-              style={{ maxWidth: '200px', maxHeight: '200px' }}
-            />
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  // Regular text content
+  // Finally, handle regular text messages
   return (
-    <div className="text-gray-100 space-y-1">
-      {formatMessageWithQuotes(message.content)}
+    <div className="space-y-2">
+      <p className="text-white whitespace-pre-wrap">{message.content}</p>
     </div>
   )
 }
@@ -156,27 +135,11 @@ const replaceBotMentions = (content: string, botNames: Record<string, string>) =
 }
 
 // Add CSS classes for different message types
-function getMessageClasses(message: Message, botNames: Record<string, string>): string {
-  const baseClasses = "p-4 rounded-lg group relative"
-  
-  // Calculate flags on the fly
-  const isFromBot = botNames[message.sender_id] || false
-  const isBotMention = message.content.includes('<@') && message.content.includes('>')
-  const replyingToBot = message.referenced_message_author_id && botNames[message.referenced_message_author_id]
-  
-  if (isFromBot) {
-    return `${baseClasses} bg-gradient-to-r from-purple-900/50 to-purple-800/30`
-  }
-  
-  if (isBotMention) {
-    return `${baseClasses} bg-blue-900/30`
-  }
-  
-  if (replyingToBot) {
-    return `${baseClasses} bg-purple-800/20`
-  }
-  
-  return `${baseClasses} bg-[#1E1E1E]`
+function getMessageClasses(message: Message, botNames: Record<string, string>) {
+  const isBot = message.isFromBot
+  return `relative group flex flex-col ${
+    isBot ? 'hover:bg-[#1E1E24]' : ''
+  }`
 }
 
 // At the top of the file, add a helper function for bot mentions
@@ -480,29 +443,21 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
 
               {/* Author and timestamp */}
               <div className="flex items-center gap-2 mb-1">
-                <span className="font-medium text-purple-300">
-                  {message.author_display_name}
-                  {botIds.includes(message.sender_id) && (
-                    <span className="ml-2 text-xs bg-purple-600 px-2 py-0.5 rounded">APP</span>
-                  )}
+                <span className="font-bold text-purple-300">
+                  {message.author_display_name || message.author_username}
                 </span>
-                <span className="text-xs text-gray-400">
-                  {formatDate(message.sent_at)}
+                {message.isFromBot && (
+                  <span className="ml-2 text-xs bg-[#5865F2] text-white px-1 rounded">
+                    APP
+                  </span>
+                )}
+                <span className="text-xs text-gray-500">
+                  {new Date(message.sent_at).toLocaleTimeString()}
                 </span>
-                <button
-                  onClick={() => onReplyTo(message)}
-                  className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-purple-300 text-sm"
-                >
-                  Reply
-                </button>
               </div>
 
-              {/* Current message content */}
-              <div className="text-gray-300">
-                {replaceBotMentions(message.content, botNames).split('\n').map((line, i) => (
-                  <div key={i}>{line}</div>
-                ))}
-              </div>
+              {/* Use the new MessageContent component */}
+              <MessageContent message={message} />
             </div>
           ))}
         </div>
