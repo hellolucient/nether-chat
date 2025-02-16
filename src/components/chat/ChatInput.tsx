@@ -126,10 +126,19 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!message.trim() && !selectedImage && !selectedSticker) return
     
-    setSendStatus('sending')
+    console.log('❤️ [1] Submit triggered:', {
+      hasContent: !!message,
+      hasImage: !!selectedImage,
+      hasSticker: !!selectedSticker
+    })
+
     try {
+      console.log('💙 [2] Preparing request:', {
+        wallet: publicKey?.toString(),
+        channelId
+      })
+
       let messageContent: MessageContent
 
       if (selectedImage) {
@@ -168,6 +177,31 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
         } as MessageContent
       }
 
+      const response = await fetch('/api/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-wallet-address': publicKey?.toString()
+        },
+        body: JSON.stringify({
+          channelId,
+          content: messageContent.content
+        })
+      })
+
+      console.log('💚 [3] Response received:', {
+        status: response.status,
+        ok: response.ok
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        console.error('💔 Send failed:', error)
+        throw new Error(error.error || 'Failed to send message')
+      }
+
+      console.log('🧡 Message sent successfully')
+
       // Send message and wait for it to complete
       await onSendMessage(messageContent)
       
@@ -187,7 +221,7 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
       await new Promise(resolve => setTimeout(resolve, 2000))
       setSendStatus('idle')
     } catch (error) {
-      console.error('❌ Error sending message:', error)
+      console.error('💔 Submit error:', error)
       setSendStatus('idle')
     }
   }

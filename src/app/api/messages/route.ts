@@ -6,48 +6,47 @@ import { PostgrestSingleResponse } from '@supabase/supabase-js'
 
 export async function POST(request: Request) {
   try {
-    console.log('📨 API: Message send request received')
+    console.log('❤️ [1] Message request received')
     
-    // Get wallet address from header
     const walletAddress = request.headers.get('x-wallet-address')
-    console.log('👛 Wallet address:', walletAddress)
+    console.log('💙 [2] Wallet check:', { walletAddress })
 
     if (!walletAddress) {
-      console.error('❌ API: No wallet address provided')
+      console.error('❌ No wallet address in request')
       return NextResponse.json({ error: 'No wallet address provided' }, { status: 400 })
     }
 
-    // Get bot token for this wallet - fix the query and type
-    const { data: botAssignment, error: botError }: PostgrestSingleResponse<{
-      discord_bots: { bot_token: string }
-    }> = await supabase
+    // Get bot assignment
+    const { data: botAssignment, error: botError } = await supabase
       .from('bot_assignments')
       .select(`
+        bot_id,
         discord_bots!inner (
-          bot_token
+          bot_token,
+          bot_name
         )
       `)
       .eq('wallet_address', walletAddress)
       .single()
 
-    console.log('🤖 Bot assignment result:', { 
+    console.log('💚 [3] Bot assignment lookup:', { 
       hasData: !!botAssignment,
-      hasToken: !!botAssignment?.discord_bots?.bot_token,
-      error: botError
+      botId: botAssignment?.bot_id,
+      botName: botAssignment?.discord_bots?.bot_name,
+      error: botError?.message
     })
 
     if (botError || !botAssignment?.discord_bots?.bot_token) {
-      console.error('❌ API: No bot found for wallet:', walletAddress)
+      console.error('❌ Bot lookup failed:', botError)
       return NextResponse.json({ error: 'No bot found for this wallet' }, { status: 400 })
     }
 
     // Parse request body
     const body = await request.json()
-    console.log('📦 API: Message request body:', {
+    console.log('💜 [4] Message content:', {
       channelId: body.channelId,
-      contentType: typeof body.content,
-      content: typeof body.content === 'string' ? body.content : body.content.content,
-      hasReply: !!body.content?.reply
+      contentLength: body.content?.length,
+      type: typeof body.content === 'string' ? 'text' : body.content?.type
     })
 
     if (!body.channelId || !body.content) {
@@ -66,15 +65,11 @@ export async function POST(request: Request) {
       } : undefined
     )
 
-    if (!success) {
-      console.error('❌ API: Failed to send message to Discord')
-      return NextResponse.json({ error: 'Failed to send message to Discord' }, { status: 500 })
-    }
+    console.log('🧡 [5] Send result:', { success })
 
-    console.log('✅ API: Message sent successfully')
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('❌ API: Error in message send route:', error)
+    console.error('💔 Message send error:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
