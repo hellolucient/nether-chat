@@ -154,47 +154,36 @@ export async function initializeDiscordBot() {
               (await message.fetchReference()).author.id : null,
             referenced_message_content: message.reference ? 
               (await message.fetchReference()).content : null,
-            // Store attachments in JSONB column
+            // Fix attachment handling
             attachments: message.attachments ? Array.from(message.attachments.values()).map(attachment => ({
               url: attachment.url,
-              content_type: attachment.contentType,
+              content_type: attachment.contentType || 'image/unknown',
               filename: attachment.name,
               size: attachment.size
             })) : []
           }
 
-          // First store the message
+          // Store in Supabase
           const { error: messageError } = await supabase
             .from('messages')
             .upsert({
               ...messageData,
+              // Make sure attachments are stored as JSONB
               attachments: messageData.attachments.length > 0 ? messageData.attachments : null
             }, {
               onConflict: 'id'
             })
 
-          if (messageError) throw messageError
-
-          // Then store attachments in separate table if any exist
-          if (messageData.attachments.length > 0) {
-            const attachmentRecords = messageData.attachments.map(attachment => ({
-              message_id: message.id,
-              url: attachment.url,
-              content_type: attachment.content_type,
-              filename: attachment.filename
-            }))
-
-            const { error: attachmentError } = await supabase
-              .from('attachments')
-              .upsert(attachmentRecords)
-
-            if (attachmentError) {
-              console.error('❌ Error storing attachments:', attachmentError)
-              // Don't throw - we still saved the message successfully
-            }
+          if (messageError) {
+            console.error('❌ Error storing message:', messageError)
+            throw messageError
           }
 
-          console.log('✅ Message and attachments stored successfully')
+          console.log('✅ Message stored with attachments:', {
+            messageId: message.id,
+            attachmentCount: messageData.attachments.length,
+            attachments: messageData.attachments
+          })
         } catch (error) {
           console.error('❌ Error processing message:', error)
         }
