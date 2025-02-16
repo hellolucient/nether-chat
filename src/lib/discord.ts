@@ -140,7 +140,19 @@ export async function initializeDiscordBot() {
           // Get bot name if message is from one of our bots
           const botName = bots?.find(b => b.discord_id === message.author.id)?.bot_name
 
-          // Prepare message data with attachments in JSONB
+          // Log raw attachment data
+          if (message.attachments.size > 0) {
+            console.log('🖼️ Raw Discord attachments:', Array.from(message.attachments.values()).map(a => ({
+              url: a.url,
+              contentType: a.contentType,
+              name: a.name,
+              size: a.size,
+              proxyURL: a.proxyURL,
+              height: a.height,
+              width: a.width
+            })))
+          }
+
           const messageData = {
             id: message.id,
             channel_id: message.channelId,
@@ -154,21 +166,31 @@ export async function initializeDiscordBot() {
               (await message.fetchReference()).author.id : null,
             referenced_message_content: message.reference ? 
               (await message.fetchReference()).content : null,
-            // Fix attachment handling
+            // Update attachment handling with more fields
             attachments: message.attachments ? Array.from(message.attachments.values()).map(attachment => ({
               url: attachment.url,
               content_type: attachment.contentType || 'image/unknown',
               filename: attachment.name,
-              size: attachment.size
+              size: attachment.size,
+              proxy_url: attachment.proxyURL,  // Add proxy URL as backup
+              width: attachment.width,         // Add dimensions if available
+              height: attachment.height
             })) : []
           }
 
-          // Store in Supabase
+          // Log what we're about to store
+          console.log('📝 Storing message data:', {
+            id: messageData.id,
+            content: messageData.content.substring(0, 50),
+            attachmentCount: messageData.attachments.length,
+            attachments: messageData.attachments
+          })
+
+          // Store in Supabase with explicit JSONB casting
           const { error: messageError } = await supabase
             .from('messages')
             .upsert({
               ...messageData,
-              // Make sure attachments are stored as JSONB
               attachments: messageData.attachments.length > 0 ? messageData.attachments : null
             }, {
               onConflict: 'id'
@@ -179,10 +201,18 @@ export async function initializeDiscordBot() {
             throw messageError
           }
 
-          console.log('✅ Message stored with attachments:', {
-            messageId: message.id,
-            attachmentCount: messageData.attachments.length,
-            attachments: messageData.attachments
+          // Verify the stored data
+          const { data: storedMessage } = await supabase
+            .from('messages')
+            .select('*')
+            .eq('id', message.id)
+            .single()
+
+          console.log('✅ Verified stored message:', {
+            id: storedMessage.id,
+            hasAttachments: storedMessage.attachments !== null,
+            attachmentCount: storedMessage.attachments?.length || 0,
+            firstAttachment: storedMessage.attachments?.[0]
           })
         } catch (error) {
           console.error('❌ Error processing message:', error)
