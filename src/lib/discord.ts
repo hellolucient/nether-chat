@@ -90,23 +90,37 @@ export async function initializeDiscordBot() {
       })
 
       client.on('messageCreate', async (message) => {
-        // Add version/environment tag to logs
+        const logId = Math.random().toString(36).substring(7)
         const ENV = process.env.VERCEL_ENV || 'development'
-        
+
         try {
-          console.log(`[${ENV}] 🎯 Message received:`, {
-            id: message.id,
-            hasAttachments: message.attachments.size > 0,
-            timestamp: new Date().toISOString()
-          })
+          // Log all incoming messages with attachments
+          if (message.attachments.size > 0) {
+            console.log(`[${ENV}] 📸 [${logId}] Received message with attachments:`, {
+              messageId: message.id,
+              channelId: message.channelId,
+              authorId: message.author.id,
+              attachments: Array.from(message.attachments.values()).map(a => ({
+                id: a.id,
+                url: a.url,
+                proxyURL: a.proxyURL,
+                contentType: a.contentType,
+                size: a.size,
+                width: a.width,
+                height: a.height
+              }))
+            })
+          }
 
           const { data: bots, error: botsError } = await supabase
             .from('discord_bots')
             .select('discord_id, bot_name')
 
-          console.log('🤖 Bots lookup:', {
-            bots,
-            error: botsError
+          // Log bot check results
+          console.log(`[${ENV}] 🤖 [${logId}] Bot check:`, {
+            messageAuthor: message.author.id,
+            bots: bots?.map(b => ({ id: b.discord_id, name: b.bot_name })),
+            hasError: !!botsError
           })
 
           if (!bots) {
@@ -142,23 +156,6 @@ export async function initializeDiscordBot() {
           // Get bot name if message is from one of our bots
           const botName = bots?.find(b => b.discord_id === message.author.id)?.bot_name
 
-          // Enhanced attachment logging
-          if (message.attachments.size > 0) {
-            console.log('📸 Discord: Received message with attachments:', {
-              messageId: message.id,
-              attachmentCount: message.attachments.size,
-              attachments: Array.from(message.attachments.values()).map(a => ({
-                id: a.id,
-                url: a.url,
-                proxyURL: a.proxyURL,
-                contentType: a.contentType,
-                size: a.size,
-                width: a.width,
-                height: a.height
-              }))
-            })
-          }
-
           const messageData = {
             id: message.id,
             channel_id: message.channelId,
@@ -191,38 +188,43 @@ export async function initializeDiscordBot() {
               false
           }
 
-          // Log the full message data before storage
-          console.log('💾 Discord: Storing message with attachments:', {
-            messageId: messageData.id,
-            attachmentCount: messageData.attachments.length,
-            firstAttachment: messageData.attachments[0]
-          })
+          // Log attachment storage
+          if (message.attachments.size > 0) {
+            console.log(`[${ENV}] 💾 [${logId}] Storing message with attachments:`, {
+              messageId: message.id,
+              attachmentCount: message.attachments.size,
+              attachments: messageData.attachments.map(a => ({
+                url: a.url,
+                type: a.content_type,
+                size: a.size
+              }))
+            })
+          }
 
-          // Store in Supabase
-          const { error: messageError } = await supabase
+          // Store in Supabase with explicit logging
+          const { error: messageError, data: stored } = await supabase
             .from('messages')
             .upsert(messageData)
+            .select()
+            .single()
 
           if (messageError) {
-            console.error('❌ Discord: Error storing message:', messageError)
+            console.error(`[${ENV}] ❌ [${logId}] Storage error:`, messageError)
             throw messageError
           }
 
-          // Verify storage
-          const { data: storedMessage } = await supabase
-            .from('messages')
-            .select('*')
-            .eq('id', message.id)
-            .single()
-
-          console.log('✅ Discord: Verified stored message:', {
-            id: storedMessage.id,
-            hasAttachments: storedMessage.attachments?.length > 0,
-            attachmentCount: storedMessage.attachments?.length || 0,
-            firstAttachment: storedMessage.attachments?.[0]
+          // Verify stored data
+          console.log(`[${ENV}] ✅ [${logId}] Message stored:`, {
+            id: stored.id,
+            hasAttachments: stored.attachments?.length > 0,
+            attachmentUrls: stored.attachments?.map(a => a.url)
           })
         } catch (error) {
-          console.error('❌ Discord: Error processing message:', error)
+          console.error(`[${ENV}] ❌ [${logId}] Error:`, {
+            error,
+            message: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined
+          })
         }
       })
     }
