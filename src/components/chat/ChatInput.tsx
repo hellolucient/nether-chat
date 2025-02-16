@@ -139,6 +139,11 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
         channelId
       })
 
+      if (!publicKey) {
+        console.error('💔 No wallet connected')
+        return
+      }
+
       let messageContent: MessageContent
 
       if (selectedImage) {
@@ -181,7 +186,7 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-wallet-address': publicKey?.toString()
+          'x-wallet-address': publicKey.toString()
         },
         body: JSON.stringify({
           channelId,
