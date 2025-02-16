@@ -128,12 +128,13 @@ export async function POST(request: Request, { params }: Context) {
     const { content, type = 'text', url } = await request.json()
     const walletAddress = request.headers.get('x-wallet-address')
 
-    logger.debug(`[${requestId}] 🚀 New image upload request`, {
+    logger.debug(`[${requestId}] ⭐️ IMAGE UPLOAD START ⭐️`, {
       channelId,
       type,
       hasContent: !!content,
       hasUrl: !!url,
-      urlLength: url?.length
+      urlLength: url?.length,
+      timestamp: new Date().toISOString()
     })
 
     // Get bot token for this wallet
@@ -182,26 +183,34 @@ export async function POST(request: Request, { params }: Context) {
       }
 
       if (type === 'image' && url) {
-        logger.debug(`[${requestId}] 📸 Processing image:`, { 
+        logger.debug(`[${requestId}] 📸 IMAGE DETAILS 📸`, { 
           url,
           urlLength: url.length,
           isValidUrl: url.startsWith('http'),
-          contentType: url.split('.').pop()
+          contentType: url.split('.').pop(),
+          timestamp: new Date().toISOString()
         })
         messageOptions.files = [url]
       }
 
       // Send message
-      logger.debug(`[${requestId}] 📤 Sending message:`, messageOptions)
+      logger.debug(`[${requestId}] 📤 SENDING MESSAGE 📤`, {
+        hasFiles: !!messageOptions.files,
+        fileCount: messageOptions.files?.length,
+        timestamp: new Date().toISOString()
+      })
+
       const sent = await channel.send(messageOptions)
-      logger.debug(`[${requestId}] ✅ Message sent:`, {
+      
+      logger.debug(`[${requestId}] ✅ MESSAGE SENT ✅`, {
         id: sent.id,
         hasAttachments: sent.attachments.size > 0,
         attachmentInfo: Array.from(sent.attachments.values()).map(a => ({
           id: a.id,
           url: a.url,
           size: a.size
-        }))
+        })),
+        timestamp: new Date().toISOString()
       })
 
       await client.destroy()
