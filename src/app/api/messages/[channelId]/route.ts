@@ -140,11 +140,15 @@ export async function POST(request: Request, { params }: Context) {
     // Get bot token for this wallet
     const { data: botAssignment } = await supabase
       .from('bot_assignments')
-      .select('discord_bots!inner(bot_token)')
+      .select(`
+        discord_bots (
+          bot_token
+        )
+      `)
       .eq('wallet_address', walletAddress)
-      .single()
+      .single() as { data: { discord_bots: { bot_token: string } } | null }
 
-    if (!botAssignment?.discord_bots?.bot_token) {
+    if (!botAssignment?.discord_bots?.[0]?.bot_token) {
       console.error('❌ No bot token found for wallet:', walletAddress)
       return NextResponse.json(
         { error: 'No bot token found for this wallet' },
@@ -153,7 +157,7 @@ export async function POST(request: Request, { params }: Context) {
     }
 
     const client = new Client({ intents: [] })
-    await client.login(botAssignment.discord_bots.bot_token)
+    await client.login(botAssignment.discord_bots[0].bot_token)
 
     const channel = await client.channels.fetch(channelId) as TextChannel
     
