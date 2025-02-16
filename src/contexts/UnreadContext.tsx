@@ -12,10 +12,14 @@ interface UnreadContextType {
 
 export const UnreadContext = createContext<UnreadContextType | null>(null)
 
+interface DiscordBot {
+  bot_token: string
+  discord_id: string
+}
+
 interface BotAssignment {
-  discord_bots: {
-    discord_id: string
-  }
+  bot_id: string
+  discord_bots: DiscordBot
 }
 
 export function UnreadProvider({ children }: { children: React.ReactNode }) {
@@ -78,12 +82,14 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
       const { data: botAssignment } = await supabase
         .from('bot_assignments')
         .select(`
-          discord_bots!inner (
+          bot_id,
+          discord_bots (
+            bot_token,
             discord_id
           )
         `)
         .eq('wallet_address', publicKey.toString())
-        .single()
+        .single() as { data: BotAssignment | null }
 
       if (!botAssignment?.discord_bots?.discord_id) return
 
@@ -119,7 +125,9 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
       const { data: botAssignment } = await supabase
         .from('bot_assignments')
         .select(`
-          discord_bots!inner (
+          bot_id,
+          discord_bots (
+            bot_token,
             discord_id
           )
         `)
