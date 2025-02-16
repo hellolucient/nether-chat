@@ -158,15 +158,15 @@ export function Chat({ channelId }: ChatProps) {
   }
 
   useEffect(() => {
-    console.log('💬 Chat: Messages received from API:', messages.map(m => ({
-      id: m.id,
+    console.log('🍉 Message Check:', {
+      messageId: m.id,
       content: m.content.substring(0, 50),
       flags: {
-        is_from_bot: m.is_from_bot,
-        is_bot_mention: m.is_bot_mention,
-        replying_to_bot: m.replying_to_bot
+        isFromBot: m.isFromBot,
+        isBotMention: m.isBotMention,
+        replyingToBot: m.replyingToBot
       }
-    })))
+    })
   }, [messages])
 
   if (loading) {
