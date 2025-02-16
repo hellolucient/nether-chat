@@ -14,6 +14,14 @@ export async function POST(request: Request) {
       .from('discord_bots')
       .select('discord_id, bot_name')
 
+    console.log('🍉 Bot List Check:', {
+      bots,
+      messageAuthorId: data.author.id,
+      messageContent: data.content.substring(0, 50),
+      mentions: data.mentions?.users,
+      referencedMessage: data.referenced_message
+    })
+
     // Check bot-related flags
     const isFromBot = bots?.some(bot => bot.discord_id === data.author.id)
     const mentionsBot = data.mentions?.users?.some(user => 
@@ -29,6 +37,21 @@ export async function POST(request: Request) {
       username: data.author.username,
       isBot: data.author.bot,  // Check if message is from a bot
       content: data.content
+    })
+    
+    // Add this after calculating the flags
+    console.log('🍉 Bot Flag Check:', {
+      messageId: data.id,
+      content: data.content.substring(0, 50),
+      flags: {
+        isFromBot,
+        mentionsBot,
+        replyingToBot
+      },
+      botIds: bots?.map(b => b.discord_id),
+      authorId: data.author.id,
+      mentions: data.mentions?.users?.map(u => u.id),
+      referencedMessageAuthorId: data.referenced_message?.author?.id
     })
     
     // Store ALL messages, not just bot-related ones
@@ -47,7 +70,13 @@ export async function POST(request: Request) {
       // Add reply data
       referenced_message_id: data.referenced_message?.id || null,
       referenced_message_author_id: data.referenced_message?.author?.id || null,
-      referenced_message_content: data.referenced_message?.content || null
+      referenced_message_content: data.referenced_message?.content || null,
+      attachments: data.attachments?.map(attachment => ({
+        url: attachment.url,
+        content_type: attachment.content_type,
+        filename: attachment.name,
+        size: attachment.size
+      })) || []
     }
 
     console.log('💾 Storing message:', {

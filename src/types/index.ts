@@ -10,7 +10,7 @@ export interface Message {
   channel_id: string
   sender_id: string
   author_username: string
-  author_display_name: string
+  author_display_name?: string
   sent_at: string
   referenced_message_id: string | null
   referenced_message_author_id: string | null
@@ -22,10 +22,11 @@ export interface Message {
     url: string
     name: string
   }>
-  attachments: Array<{
+  attachments?: Array<{
     url: string
     content_type?: string
-    filename: string
+    filename?: string
+    size?: number
   }>
   embeds: Array<{
     type: string
@@ -55,14 +56,16 @@ export interface BaseMessageContent {
   reply?: MessageReply
 }
 
-export type ImageMessageContent = {
+export interface ImageMessageContent {
   type: 'image'
+  content: string
   url: string
-} & BaseMessageContent
+}
 
-export type TextMessageContent = {
+export interface TextMessageContent {
   type: 'text'
-} & BaseMessageContent
+  content: string
+}
 
 export type StickerMessageContent = {
   type: 'sticker'
@@ -71,3 +74,10 @@ export type StickerMessageContent = {
 } & BaseMessageContent
 
 export type MessageContent = ImageMessageContent | TextMessageContent | StickerMessageContent
+
+export interface AppMessage {
+  id: string
+  content: MessageContent
+  channel_id: string
+  // ... rest of the message fields ...
+}

@@ -62,7 +62,7 @@ function formatDate(dateString: string) {
 }
 
 function MessageContent({ message }: { message: Message }) {
-  // First check for attachments (images)
+  // First check for attachments (images from Discord)
   if (message.attachments && message.attachments.length > 0) {
     const images = message.attachments.filter(a => 
       a.content_type?.startsWith('image/') || a.url.match(/\.(jpg|jpeg|png|gif)$/i)
@@ -88,7 +88,7 @@ function MessageContent({ message }: { message: Message }) {
     )
   }
   
-  // Then check for GIFs
+  // Then check for GIFs (from Tenor)
   if (message.content?.startsWith('__GIF__')) {
     const gifUrl = message.content.replace('__GIF__', '')
     return (
@@ -96,6 +96,20 @@ function MessageContent({ message }: { message: Message }) {
         <img 
           src={gifUrl} 
           alt="GIF" 
+          className="rounded-lg w-full"
+          loading="lazy"
+        />
+      </div>
+    )
+  }
+
+  // Check for image URLs in content (from our uploads)
+  if (message.content && message.content.match(/\.(jpg|jpeg|png|gif)$/i)) {
+    return (
+      <div className="max-w-[300px]">
+        <img 
+          src={message.content} 
+          alt="Uploaded image" 
           className="rounded-lg w-full"
           loading="lazy"
         />

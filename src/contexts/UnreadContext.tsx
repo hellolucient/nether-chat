@@ -74,24 +74,35 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
     if (!publicKey) return
 
     try {
-      console.log('🔍 Checking unread channels for wallet:', publicKey.toString())
-      const response = await fetch(`/api/channels/unread?wallet=${publicKey.toString()}`)
-      
-      if (!response.ok) {
-        const error = await response.text()
-        console.error('❌ Error response:', error)
-        return
-      }
+      // Get user's bot ID first
+      const { data: botAssignment } = await supabase
+        .from('bot_assignments')
+        .select(`
+          discord_bots!inner (
+            discord_id
+          )
+        `)
+        .eq('wallet_address', publicKey.toString())
+        .single()
 
-      const data = await response.json()
-      console.log('📬 Unread channels response:', data)
-      
-      if (data.unreadChannels) {
-        console.log('✨ Setting unread channels:', data.unreadChannels)
-        setUnreadChannels(new Set(data.unreadChannels))
+      if (!botAssignment?.discord_bots?.discord_id) return
+
+      const botId = botAssignment.discord_bots.discord_id
+
+      // Get messages that mention/reply to user's bot
+      const { data: messages } = await supabase
+        .from('messages')
+        .select('channel_id, sent_at')
+        .or(`referenced_message_author_id.eq.${botId},content.ilike.%<@${botId}>%`)
+        .order('sent_at', { ascending: false })
+
+      // Update unread channels based on these messages
+      if (messages?.length) {
+        console.log('✨ Setting unread channels:', messages.map(m => m.channel_id))
+        setUnreadChannels(new Set(messages.map(m => m.channel_id)))
       }
     } catch (error) {
-      console.error('❌ Failed to check unread channels:', error)
+      console.error('Failed to check unread channels:', error)
     }
   }, [publicKey])
 
