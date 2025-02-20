@@ -63,11 +63,7 @@ export async function POST(request: Request) {
       author_display_name: data.member?.displayName || data.author.displayName || data.author.username,
       content: data.content,
       sent_at: new Date(data.timestamp).toISOString(),
-      // Add back the bot flags
-      isFromBot: isFromBot,
-      isBotMention: mentionsBot,
-      replyingToBot: replyingToBot,
-      // Add reply data
+      // Remove isBotMention, isFromBot, replyingToBot
       referenced_message_id: data.referenced_message?.id || null,
       referenced_message_author_id: data.referenced_message?.author?.id || null,
       referenced_message_content: data.referenced_message?.content || null,
@@ -76,7 +72,9 @@ export async function POST(request: Request) {
         content_type: attachment.content_type,
         filename: attachment.name,
         size: attachment.size
-      })) || []
+      })) || [],
+      embeds: data.embeds || [],
+      stickers: data.stickers || []
     }
 
     console.log('💾 Storing message:', {

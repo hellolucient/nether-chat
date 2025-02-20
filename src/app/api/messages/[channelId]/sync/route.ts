@@ -176,11 +176,27 @@ export async function GET(req: NextRequest, context: Context) {
         // Get referenced message content and author if it exists
         let referencedContent: string | null = null
         let referencedAuthorId: string | null = null
+        let referencedMessage: DiscordMessage | undefined = undefined
+
         if (msg.reference?.messageId) {
           try {
-            const referencedMsg = await channel.messages.fetch(msg.reference.messageId)
-            referencedContent = referencedMsg.content
-            referencedAuthorId = referencedMsg.author.id
+            // First try to get from the current batch of messages
+            referencedMessage = discordMessages.get(msg.reference.messageId)
+            
+            // If not in current batch, fetch from Discord
+            if (!referencedMessage) {
+              referencedMessage = await channel.messages.fetch(msg.reference.messageId)
+            }
+
+            if (referencedMessage) {
+              referencedContent = referencedMessage.content
+              referencedAuthorId = referencedMessage.author.id
+              console.log('✅ Found referenced message:', {
+                id: msg.reference.messageId,
+                content: referencedContent,
+                authorId: referencedAuthorId
+              })
+            }
           } catch (error) {
             console.warn('Could not fetch referenced message:', error)
           }

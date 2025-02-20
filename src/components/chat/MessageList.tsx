@@ -61,7 +61,7 @@ function formatDate(dateString: string) {
   }
 }
 
-function MessageContent({ message }: { message: Message }) {
+function MessageContent({ message, onReplyTo }: { message: Message; onReplyTo: (message: Message) => void }) {
   // First check for attachments (images from Discord)
   if (message.attachments && message.attachments.length > 0) {
     const images = message.attachments.filter(a => 
@@ -416,46 +416,16 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
       ) : (
         <div className="space-y-4 p-4">
           {messages.map((message) => (
-            <div 
-              key={message.id} 
-              className={getMessageClasses(message, botNames)}
-            >
-              {/* Show referenced message if it exists */}
-              {message.referenced_message_id && (
-                <div className="mb-2 pl-4 border-l-2 border-[#363640]">
-                  <div className="text-gray-400 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span>
-                        <span className="text-purple-300">
-                          @{message.referenced_message_author_id && (
-                            botNames[message.referenced_message_author_id] || 
-                            referencedAuthors[message.referenced_message_author_id] ||
-                            "Unknown User"
-                          )}
-                        </span>
-                        {' '}
-                        {message.referenced_message_content && 
-                          message.referenced_message_content.split(' ').map((word, i) => {
-                            if (word.startsWith('<@') && word.endsWith('>')) {
-                              const botId = word.slice(2, -1)
-                              const botName = botNames[botId]
-                              return botName ? (
-                                <React.Fragment key={i}>
-                                  <span className="font-bold text-purple-300">@{botName}</span>
-                                  {' '}
-                                </React.Fragment>
-                              ) : word + ' '
-                            }
-                            return word + ' '
-                          })
-                        }
-                      </span>
-                    </div>
-                  </div>
+            <div key={message.id} className="group hover:bg-[#1E1E24] p-2 rounded">
+              {message.referenced_message_content && (
+                <div className="ml-2 pl-2 mb-1 border-l-2 border-gray-600 text-gray-400 text-sm">
+                  <span className="text-gray-300">
+                    Replying to <span className="font-bold">{messages.find(m => m.sender_id === message.referenced_message_author_id)?.author_display_name || message.referenced_message_author_id}</span>
+                  </span>
+                  {' '}{message.referenced_message_content}
                 </div>
               )}
-
-              {/* Author and timestamp */}
+              
               <div className="flex items-center gap-2 mb-1">
                 <span className="font-bold text-purple-300">
                   {message.author_display_name || message.author_username}
@@ -468,10 +438,19 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
                 <span className="text-xs text-gray-500">
                   {new Date(message.sent_at).toLocaleTimeString()}
                 </span>
+                
+                <button
+                  onClick={() => onReplyTo(message)}
+                  className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-purple-300 rounded transition-opacity"
+                  title="Reply"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M7.707 3.293a1 1 0 010 1.414L5.414 7H11a7 7 0 017 7v2a1 1 0 11-2 0v-2a5 5 0 00-5-5H5.414l2.293 2.293a1 1 0 11-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </button>
               </div>
 
-              {/* Use the new MessageContent component */}
-              <MessageContent message={message} />
+              <MessageContent message={message} onReplyTo={onReplyTo} />
             </div>
           ))}
         </div>

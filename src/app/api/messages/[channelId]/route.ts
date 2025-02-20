@@ -10,6 +10,7 @@ import {
 import { Message } from '@/types' // Import our Message type
 import { Client } from 'discord.js'
 import { logger } from '@/lib/logger'
+import { sendMessage } from '@/lib/discord'
 
 // Define the context type exactly as Next.js expects
 type Context = {
@@ -23,6 +24,15 @@ type BotData = {
   discord_id: string
   bot_name: string
 }
+
+// Update the BotAssignment type
+type BotAssignment = {
+  bot_id: string;
+  discord_bots: {
+    bot_token: string;
+    bot_name: string;
+  };
+};
 
 // Add color helper at top of file
 const purple = (text: string) => `\x1b[35m${text}\x1b[0m`
@@ -53,15 +63,16 @@ function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message 
     replyingToBot
   })
 
-  // Get referenced message author if it exists
+  // Get referenced message details if it exists
   let referencedAuthorId: string | null = null
   let referencedContent: string | null = null
+  
   if (msg.reference?.messageId) {
-    const referencingBot = bots.find(bot => 
-      msg.reference && bot.discord_id === msg.reference.messageId
-    )
-    if (referencingBot) {
-      referencedAuthorId = referencingBot.discord_id
+    // Get the referenced message from the channel
+    const referencedMessage = msg.channel.messages.cache.get(msg.reference.messageId)
+    if (referencedMessage) {
+      referencedAuthorId = referencedMessage.author.id
+      referencedContent = referencedMessage.content
     }
   }
 
@@ -104,8 +115,9 @@ export const revalidate = 0
 export async function GET(req: NextRequest, context: Context) {
   const { channelId } = context.params
   
+  // Get messages with all fields using *
   const { data: messages, error } = await supabase
-    .from('messages')  // ✅ Correct - querying 'messages' table
+    .from('messages')
     .select('*')
     .eq('channel_id', channelId)
     .order('sent_at', { ascending: true })
@@ -115,122 +127,99 @@ export async function GET(req: NextRequest, context: Context) {
     return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 })
   }
 
-  console.log('🔍 First message from Supabase:', messages?.[0])
+  // Log a message with reference for debugging
+  const referencedMessage = messages?.find(m => m.referenced_message_id)
+  if (referencedMessage) {
+    console.log('🔍 Found message with reference:', {
+      id: referencedMessage.id,
+      content: referencedMessage.content,
+      referencedId: referencedMessage.referenced_message_id,
+      referencedContent: referencedMessage.referenced_message_content
+    })
+  }
+
   return NextResponse.json({ messages })
 }
 
 // POST handler for sending messages
-export async function POST(request: Request, { params }: Context) {
-  const requestId = Math.random().toString(36).substring(7)
-  
+export async function POST(request: Request, context: Context) {
   try {
-    const { channelId } = params
-    const { content, type = 'text', url } = await request.json()
+    const { channelId } = context.params
+    const { content, reply } = await request.json()
     const walletAddress = request.headers.get('x-wallet-address')
 
-    logger.debug(`[${requestId}] ⭐️ IMAGE UPLOAD START ⭐️`, {
-      channelId,
-      type,
-      hasContent: !!content,
-      hasUrl: !!url,
-      urlLength: url?.length,
-      timestamp: new Date().toISOString()
-    })
-
-    // Get bot token for this wallet
-    logger.debug(`[${requestId}] 🔍 Fetching bot token...`)
-    const { data: botAssignment, error: botError } = await supabase
-      .from('bot_assignments')
-      .select(`
-        discord_bots (
-          bot_token,
-          bot_name,
-          discord_id
-        )
-      `)
-      .eq('wallet_address', walletAddress)
-      .single()
-
-    if (botError) {
-      logger.error(`[${requestId}] Bot lookup error`, botError)
-      return NextResponse.json({ error: 'Failed to find bot' }, { status: 400 })
+    if (!walletAddress || !channelId) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    const bot = botAssignment?.discord_bots?.[0]
-    logger.debug(`[${requestId}] ✅ Found bot:`, {
-      hasToken: !!bot?.bot_token,
-      botName: bot?.bot_name,
-      botId: bot?.discord_id
-    })
-
-    // Initialize Discord client
-    logger.debug(`[${requestId}] 🤖 Initializing Discord client...`)
-    const client = new Client({ intents: [] })
+    console.log('📤 Sending message to channel:', channelId)
     
-    try {
-      await client.login(bot.bot_token)
-      logger.debug(`[${requestId}] ✅ Bot logged in`)
-      
-      const channel = await client.channels.fetch(channelId) as TextChannel
-      logger.debug(`[${requestId}] ✅ Channel fetched:`, {
-        name: channel.name,
-        id: channel.id
-      })
+    // Get Discord client and channel
+    const discord = await getDiscordClient(walletAddress)
+    const channel = await discord.channels.fetch(channelId) as TextChannel
 
-      // Prepare message
-      const messageOptions: any = {
-        content: content || '\u200B',
-      }
-
-      if (type === 'image' && url) {
-        logger.debug(`[${requestId}] 📸 IMAGE DETAILS 📸`, { 
-          url,
-          urlLength: url.length,
-          isValidUrl: url.startsWith('http'),
-          contentType: url.split('.').pop(),
-          timestamp: new Date().toISOString()
-        })
-        messageOptions.files = [url]
-      }
-
-      // Send message
-      logger.debug(`[${requestId}] 📤 SENDING MESSAGE 📤`, {
-        hasFiles: !!messageOptions.files,
-        fileCount: messageOptions.files?.length,
-        timestamp: new Date().toISOString()
-      })
-
-      const sent = await channel.send(messageOptions)
-      
-      logger.debug(`[${requestId}] ✅ MESSAGE SENT ✅`, {
-        id: sent.id,
-        hasAttachments: sent.attachments.size > 0,
-        attachmentInfo: Array.from(sent.attachments.values()).map(a => ({
-          id: a.id,
-          url: a.url,
-          size: a.size
-        })),
-        timestamp: new Date().toISOString()
-      })
-
-      await client.destroy()
-      return NextResponse.json({ 
-        success: true,
-        messageId: sent.id
-      })
-
-    } catch (discordError) {
-      logger.error(`[${requestId}] Discord error`, {
-        error: discordError,
-        message: discordError instanceof Error ? discordError.message : 'Unknown error'
-      })
-      throw discordError
+    // Prepare message options
+    const messageOptions: any = {
+      content: typeof content === 'string' ? content : content.content
     }
+
+    if (reply) {
+      messageOptions.reply = {
+        messageReference: reply.messageId,
+        failIfNotExists: false
+      }
+    }
+
+    // Send the message
+    const sentMessage = await channel.send(messageOptions)
+    console.log('✅ Message sent to Discord:', sentMessage.id)
+    
+    // Get latest messages including our just-sent one
+    const messages = await channel.messages.fetch({ limit: 50 })
+    console.log('📥 Fetched messages from Discord:', messages.size)
+    
+    // Store in Supabase
+    const { data: storedMessages, error } = await supabase
+      .from('messages')
+      .upsert(
+        messages.map(m => {
+          const referencedMessage = m.reference?.messageId 
+            ? messages.get(m.reference.messageId)
+            : null;
+
+          return {
+            id: m.id,
+            channel_id: channelId,
+            sender_id: m.author.id,
+            content: m.content,
+            sent_at: m.createdAt.toISOString(),
+            referenced_message_id: m.reference?.messageId || null,
+            referenced_message_author_id: referencedMessage?.author.id || null,
+            author_username: m.author.username,
+            attachments: m.attachments.size > 0 ? Array.from(m.attachments.values()) : [],
+            embeds: m.embeds.length > 0 ? m.embeds : [],
+            stickers: [],
+            referenced_message_content: referencedMessage?.content || null,
+            author_display_name: m.author.displayName || m.author.username
+          };
+        })
+      )
+      .select('*')
+      .order('sent_at', { ascending: true })
+
+    if (error) {
+      console.error('❌ Supabase upsert error:', error)
+      throw error
+    }
+
+    console.log('💾 Stored messages in Supabase:', storedMessages?.length || 0)
+
+    return NextResponse.json({ 
+      success: true,
+      messages: storedMessages || []
+    })
   } catch (error) {
-    logger.error(`[${requestId}] Failed to send message`, error)
-    return NextResponse.json(
-      { error: 'Failed to send message' },
-      { status: 500 }
-    )
+    console.error('❌ Error sending message:', error)
+    return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
   }
 } 

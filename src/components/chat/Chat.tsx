@@ -17,7 +17,7 @@ export function Chat({ channelId }: ChatProps) {
   const { publicKey } = useWallet()
   const { markChannelAsRead, checkUnreadChannels } = useUnread()
   const [messages, setMessages] = useState<Message[]>([])
-  const [loading, setLoading] = useState(true)
+  const [sendingMessage, setSendingMessage] = useState(false)
   const [authorized, setAuthorized] = useState(true)  // Start as true to prevent flash
   const [checkingAccess, setCheckingAccess] = useState(true)  // New state
   const [replyTo, setReplyTo] = useState<Message | null>(null)
@@ -76,86 +76,73 @@ export function Chat({ channelId }: ChatProps) {
 
   const fetchMessages = useCallback(async () => {
     try {
-      setLoading(true)
+      if (!publicKey?.toString()) return
       
-      // Only sync if we have a wallet
-      if (publicKey?.toString()) {
-        await syncMessages(channelId, publicKey.toString())
+      // Remove debounce and wait for sync to complete
+      if (publicKey?.toString() && !syncInProgress.current) {
+        syncInProgress.current = true
+        console.log('🔄 Starting Discord sync...')
+        await fetch(`/api/messages/${channelId}/sync?wallet=${publicKey.toString()}`)
+        syncInProgress.current = false
       }
 
-      if (!publicKey?.toString()) {
-        throw new Error('No wallet connected')
-      }
-
-      console.log('📥 Fetching messages for channel:', channelId)
+      // Now get messages after sync completes
       const response = await fetch(`/api/messages/${channelId}?wallet=${publicKey.toString()}`)
-      
       const data = await response.json()
+      
       if (!response.ok) {
         throw new Error(data.error || 'Failed to fetch messages')
       }
 
-      const messages = data.messages || []
-      console.log('📥 Fetched messages:', messages.length)
-      setMessages(messages)
+      setMessages(data.messages || [])
     } catch (error) {
       console.error('Failed to fetch messages:', error)
-      throw error
-    } finally {
-      setLoading(false)
     }
-  }, [channelId, publicKey, syncMessages])
+  }, [channelId, publicKey])
 
-  useEffect(() => {
-    if (!channelId || !publicKey) return
+  const handleSendMessage = async (content: string) => {
+    if (!publicKey) return;
     
-    const loadChannel = async () => {
-      setLoading(true)
-      setMessages([])
-      
-      try {
-        await fetchMessages()
-        await markChannelAsRead(channelId)
-      } catch (error) {
-        console.error('Failed to load channel:', error)
-      }
-    }
-
-    loadChannel()
-  }, [channelId, publicKey, fetchMessages, markChannelAsRead])
-
-  const handleSendMessage = async (content: MessageContent) => {
-    if (!channelId || !publicKey) return
-
     try {
-      console.log('📤 Sending message:', { content, channelId })
+      setSendingMessage(true);
       
-      const response = await fetch('/api/messages', {
+      const messageData = {
+        content,
+        // Add reply data if replying to a message
+        ...(replyTo && {
+          reply: {
+            messageId: replyTo.id,
+            authorId: replyTo.sender_id,
+            content: replyTo.content
+          }
+        })
+      };
+      
+      const response = await fetch(`/api/messages/${channelId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-wallet-address': publicKey.toString()
         },
-        body: JSON.stringify({
-          channelId,
-          content  // Just pass the MessageContent object directly
-        }),
-      })
+        body: JSON.stringify(messageData)
+      });
 
-      if (!response.ok) {
-        const error = await response.text()
-        console.error('❌ Message send failed:', error)
-        throw new Error(`Failed to send message: ${error}`)
-      }
+      if (!response.ok) throw new Error('Failed to send message');
+      await fetchMessages();
+      setReplyTo(null);
 
-      // Immediately fetch messages - no delay needed
-      await fetchMessages()
-      await checkUnreadChannels()
     } catch (error) {
-      console.error('❌ Chat: Error sending message:', error)
-      throw error
+      console.error('Failed to send message:', error);
+    } finally {
+      setSendingMessage(false);
     }
-  }
+  };
+
+  // Initial load
+  useEffect(() => {
+    if (!channelId || !publicKey) return
+    fetchMessages()
+  }, [channelId, publicKey, fetchMessages])
 
   useEffect(() => {
     console.log('💬 Chat: Messages received from API:', messages.map(m => ({
@@ -169,19 +156,19 @@ export function Chat({ channelId }: ChatProps) {
     })))
   }, [messages])
 
-  if (loading) {
-    console.log('Rendering loading state...')
+  if (sendingMessage) {
+    console.log('Rendering sending state...')
     return (
       <div className="h-full flex flex-col">
         <div className="flex-1 min-h-0 flex items-center justify-center">
           <div className="text-center space-y-4">
             <img 
               src="/nether-world.png" 
-              alt="Loading" 
+              alt="Sending" 
               className="w-16 h-16 mx-auto animate-pulse"
             />
             <div className="text-2xl text-purple-300 animate-pulse">
-              Loading... chatter incoming
+              Sending...
             </div>
           </div>
         </div>
@@ -205,15 +192,19 @@ export function Chat({ channelId }: ChatProps) {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Messages container - add relative positioning */}
       <div className="flex-1 min-h-0 relative overflow-hidden">
         <MessageList 
           messages={messages} 
-          loading={loading}
+          loading={false} // Don't show loading for message updates
           channelId={channelId}
           onRefresh={fetchMessages}
           onReplyTo={setReplyTo}
         />
+        {sendingMessage && (
+          <div className="absolute bottom-4 right-4 bg-purple-600 text-white px-3 py-1 rounded-full text-sm">
+            Sending...
+          </div>
+        )}
       </div>
       
       {/* Input always at bottom */}

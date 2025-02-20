@@ -22,7 +22,7 @@ type SendStatus = 'idle' | 'sending' | 'sent'
 
 interface ChatInputProps {
   channelId: string
-  onSendMessage: (content: MessageContent) => Promise<void>
+  onSendMessage: (content: string, type?: string, url?: string) => Promise<void>
   replyTo: Message | null
   onCancelReply: () => void
   onRefreshMessages: () => Promise<void>
@@ -33,6 +33,13 @@ interface TenorGifResult {
   media_formats: {
     gif: { url: string }
     tinygif: { url: string }
+  }
+}
+
+const DEBUG = process.env.NODE_ENV === 'development'
+const log = (msg: string, data?: any) => {
+  if (DEBUG) {
+    console.log(`🔷 ${msg}`, data ? data : '')
   }
 }
 
@@ -128,7 +135,7 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    // Change validation to allow image-only messages
+    // Allow empty content if we have an image
     if (!message.trim() && !selectedImage && !selectedSticker) {
       console.log('❤️ No content to send')
       return
@@ -141,7 +148,6 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
       }
 
       setSendStatus('sending')
-      let messageContent: MessageContent
 
       if (selectedImage) {
         console.log('💜 Processing image upload')
@@ -150,55 +156,20 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
         setUploading(false)
         console.log('💜 Image uploaded:', { imageUrl })
         
-        messageContent = {
-          type: 'image',
-          content: message || '',
-          url: imageUrl
-        }
-
-        console.log('💜 Message content prepared:', messageContent)
-      } else if (selectedSticker) {
-        messageContent = {
-          type: 'sticker',
-          content: message,
-          stickerId: selectedSticker.id,
-          url: selectedSticker.url,
-          reply: replyTo ? {
-            messageReference: { messageId: replyTo.id },
-            quotedContent: replyTo.content,
-            author: { username: replyTo.author_username }
-          } : undefined
-        } as MessageContent
+        // Send image with optional message
+        await onSendMessage(message, 'image', imageUrl)
+        
+        // Clear image after successful send
+        setSelectedImage(null)
+        setImagePreview(null)
       } else {
-        messageContent = {
-          type: 'text',
-          content: message,
-          reply: replyTo ? {
-            messageReference: { messageId: replyTo.id },
-            quotedContent: replyTo.content,
-            author: { username: replyTo.author_username }
-          } : undefined
-        } as MessageContent
+        // Normal text message
+        await onSendMessage(message)
       }
 
-      // Send message and wait for it to complete
-      await onSendMessage(messageContent)
-      
-      // Clear inputs
+      // Clear message after successful send
       setMessage('')
-      setSelectedImage(null)
-      setSelectedSticker(null)
-
-      if (replyTo && onCancelReply) {
-        onCancelReply()
-      }
-
-      // Show "Sent!" state
       setSendStatus('sent')
-      
-      // Add delay before returning to idle
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      setSendStatus('idle')
     } catch (error) {
       console.error('💔 Submit error:', error)
       setSendStatus('idle')
@@ -269,6 +240,37 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
     setSelectedSticker(sticker)
     setShowStickerPicker(false)
     inputRef.current?.focus()
+  }
+
+  const handleImageUpload = async (file: File) => {
+    log('Starting image upload', { 
+      name: file.name, 
+      size: file.size, 
+      type: file.type 
+    })
+
+    try {
+      // Compress image
+      log('Compressing image...')
+      const compressedFile = await compressImage(file)
+      log('Image compressed', { 
+        originalSize: file.size,
+        compressedSize: compressedFile.size 
+      })
+
+      // Upload to Supabase
+      log('Uploading to Supabase...')
+      const { imageUrl } = await uploadImage(compressedFile)
+      log('Upload successful', { imageUrl })
+
+      // Send message
+      log('Sending message with image...')
+      await onSendMessage('', 'image', imageUrl)
+      log('Message sent with image')
+
+    } catch (error) {
+      console.error('❌ Image upload failed:', error)
+    }
   }
 
   return (

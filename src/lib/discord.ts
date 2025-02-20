@@ -45,6 +45,18 @@ interface BotAssignment {
 // Add a client cache at the top of the file
 const clientCache = new Map<string, Client>()
 
+// Update the message content type to include type and url
+interface MessageOptions {
+  content: string;
+  type?: 'text' | 'image';
+  url?: string;
+  reply?: {
+    messageId: string;
+    authorId: string;
+    content: string;
+  };
+}
+
 export async function initializeDiscordBot() {
   try {
     console.log('🤖 Starting Discord bot initialization...')
@@ -322,61 +334,44 @@ export async function checkDiscordConnection() {
 
 // Update sendMessage function to require wallet address
 export async function sendMessage(
-  channelId: string, 
-  content: string | { type: 'image' | 'text' | 'sticker', content: string, url?: string },
-  walletAddress: string,
-  options?: { 
-    messageReference?: { messageId: string },
-    quotedContent?: string
-  }
+  channelId: string,
+  messageOptions: MessageOptions,
+  walletAddress: string
 ) {
   try {
+    console.log('🤖 Discord: Getting client for wallet:', walletAddress)
     const discord = await getDiscordClient(walletAddress)
-    const channel = await discord.channels.fetch(channelId)
     
-    if (!channel?.isTextBased()) {
-      throw new Error('Channel not found or not text channel')
+    console.log('🤖 Discord: Fetching channel:', channelId)
+    const channel = await discord.channels.fetch(channelId) as TextChannel
+    
+    if (!channel) {
+      throw new Error('Channel not found')
     }
 
-    const textChannel = channel as BaseGuildTextChannel
-    
-    // Handle different message types
-    let messageOptions: any = {}
-
-    if (typeof content === 'object') {
-      switch (content.type) {
-        case 'image':
-          messageOptions = {
-            content: content.content || '',  // Allow empty content
-            files: [content.url]  // Send the image URL as a file
-          }
-          break
-        case 'sticker':
-          messageOptions = {
-            content: content.content,
-            stickers: [content.url]
-          }
-          break
-        default:
-          messageOptions = { content: content.content }
-      }
-    } else {
-      messageOptions = { content }
+    console.log('📝 Discord: Constructing message options:', messageOptions)
+    const discordMessageOptions: any = {
+      content: messageOptions.content
     }
 
-    // Add reply if present
-    if (options?.messageReference) {
-      messageOptions.reply = {
-        messageReference: options.messageReference.messageId,
+    if (messageOptions.reply) {
+      console.log('💬 Discord: Adding reply options:', messageOptions.reply)
+      discordMessageOptions.reply = {
+        messageReference: messageOptions.reply.messageId,
         failIfNotExists: false
       }
     }
 
-    console.log('📨 Sending Discord message:', messageOptions)
-    const message = await textChannel.send(messageOptions)
+    if (messageOptions.type === 'image' && messageOptions.url) {
+      console.log('🖼 Discord: Adding image:', messageOptions.url)
+      discordMessageOptions.files = [messageOptions.url]
+    }
+
+    console.log('📤 Discord: Sending message with options:', discordMessageOptions)
+    await channel.send(discordMessageOptions)
     return true
   } catch (error) {
-    console.error('Error sending message:', error)
+    console.error('❌ Discord: Failed to send message:', error)
     return false
   }
 }

@@ -42,47 +42,23 @@ export async function POST(request: NextRequest) {
       console.log('🔄 Testing bot token connection...')
       await testClient.login(botToken)
       const botUser = testClient.user
-      console.log('✅ Bot token valid, bot name:', botUser?.username)
-      await testClient.destroy()
+      console.log('✅ Bot token valid, bot details:', {
+        username: botUser?.username,
+        id: botUser?.id  // This is the Discord ID we need
+      })
 
-      // Check if wallet already has a bot token
-      const { data: existingToken } = await supabase
-        .from('bot_tokens')
-        .select('*')
-        .eq('wallet_address', walletAddress)
-        .single()
+      // Update or insert bot token with Discord ID
+      const { error: botError } = await supabase
+        .from('discord_bots')
+        .upsert({
+          bot_token: botToken,
+          bot_name: botUser?.username || 'Unknown Bot',
+          discord_id: botUser?.id  // Add this field
+        })
 
-      console.log('📝 Existing token:', existingToken)
-
-      // Update or insert bot token
-      if (existingToken) {
-        // Update existing token
-        const { error: botError } = await supabase
-          .from('bot_tokens')
-          .update({
-            bot_token: botToken,
-            bot_name: botUser?.username || 'Unknown Bot'
-          })
-          .eq('wallet_address', walletAddress)
-
-        if (botError) {
-          console.error('❌ Database error updating bot token:', botError)
-          throw botError
-        }
-      } else {
-        // Insert new token
-        const { error: botError } = await supabase
-          .from('bot_tokens')
-          .insert({
-            wallet_address: walletAddress,
-            bot_token: botToken,
-            bot_name: botUser?.username || 'Unknown Bot'
-          })
-
-        if (botError) {
-          console.error('❌ Database error inserting bot token:', botError)
-          throw botError
-        }
+      if (botError) {
+        console.error('❌ Database error updating bot:', botError)
+        throw botError
       }
 
       // Check if wallet already has an assignment
