@@ -5,7 +5,13 @@ import { useState } from 'react'
 import { BotAssignment } from './BotAssignment'
 import { BotManagement } from './BotManagement'
 import { useWallet } from '@solana/wallet-adapter-react'
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
+import dynamic from 'next/dynamic'
+
+// Import WalletMultiButton dynamically with ssr disabled
+const WalletMultiButton = dynamic(
+  async () => (await import('@solana/wallet-adapter-react-ui')).WalletMultiButton,
+  { ssr: false }
+)
 
 export function AdminPanel() {
   const { publicKey } = useWallet()
@@ -17,7 +23,9 @@ export function AdminPanel() {
         <h2 className="text-xl font-semibold text-purple-300 mb-4">
           Connect Wallet to Access Admin Panel
         </h2>
-        <WalletMultiButton />
+        <div className="flex justify-center">
+          <WalletMultiButton />
+        </div>
       </div>
     )
   }

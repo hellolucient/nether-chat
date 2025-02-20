@@ -8,7 +8,8 @@ import { TrashIcon, PencilIcon } from '@heroicons/react/24/outline'
 interface Bot {
   id: string
   bot_name: string
-  bot_token: string
+  bot_token?: string
+  discord_id?: string
   created_at: string
 }
 
@@ -44,33 +45,108 @@ export function BotManagement() {
     if (!publicKey) return
 
     try {
-      if (editingBot) {
-        const { error } = await supabase
-          .from('discord_bots')
-          .update({
-            bot_name: formData.botName,
-            bot_token: formData.botToken
-          })
-          .eq('id', editingBot)
+      // Validate token via API if one is provided
+      if (formData.botToken.trim()) {
+        const validateResponse = await fetch('/api/admin/validate-bot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ botToken: formData.botToken })
+        })
 
-        if (error) throw error
-      } else {
-        const { error } = await supabase
-          .from('discord_bots')
-          .insert({
-            bot_name: formData.botName,
-            bot_token: formData.botToken
-          })
+        if (!validateResponse.ok) {
+          alert('Invalid bot token')
+          return
+        }
 
-        if (error) throw error
+        const validation = await validateResponse.json()
+
+        if (editingBot) {
+          // Get current bot data first
+          const { data: currentBot } = await supabase
+            .from('discord_bots')
+            .select('*')
+            .eq('id', editingBot)
+            .single()
+
+          if (!currentBot) {
+            throw new Error('Bot not found')
+          }
+
+          // Prepare update object with only changed fields
+          const updates: any = {
+            bot_name: formData.botName,
+            discord_id: validation.botId // Use the ID from validation
+          }
+
+          // Only include token if it's provided
+          if (formData.botToken.trim()) {
+            updates.bot_token = formData.botToken
+          }
+
+          // Preserve discord_id
+          updates.discord_id = currentBot.discord_id
+
+          const { error } = await supabase
+            .from('discord_bots')
+            .update(updates)
+            .eq('id', editingBot)
+
+          if (error) throw error
+        } else {
+          // Insert new bot
+          const { error } = await supabase
+            .from('discord_bots')
+            .insert({
+              bot_name: formData.botName,
+              bot_token: formData.botToken,
+              discord_id: validation.botId
+            })
+
+          if (error) throw error
+        }
+
+        setEditingBot(null)
+        setFormData({ botName: '', botToken: '' })
+        fetchBots()
+      }
+    } catch (error) {
+      console.error('Error updating bot:', error)
+      alert('Failed to update bot')
+    }
+  }
+
+  const handleDelete = async (botId: string) => {
+    if (!confirm('Are you sure you want to delete this bot?')) return
+    
+    try {
+      // First remove any bot assignments
+      const { error: assignmentError } = await supabase
+        .from('bot_assignments')
+        .update({ bot_id: null })
+        .eq('bot_id', botId)
+
+      if (assignmentError) {
+        console.error('Failed to clear bot assignments:', assignmentError)
+        alert('Failed to delete bot: Could not clear assignments')
+        return
       }
 
-      setFormData({ botName: '', botToken: '' })
-      setEditingBot(null)
-      fetchBots()
+      // Then delete the bot
+      const { error: deleteError } = await supabase
+        .from('discord_bots')
+        .delete()
+        .eq('id', botId)
+
+      if (deleteError) {
+        console.error('Failed to delete bot:', deleteError)
+        alert('Failed to delete bot')
+        return
+      }
+
+      fetchBots() // Refresh the list
     } catch (error) {
-      console.error('Error saving bot:', error)
-      alert('Failed to save bot: ' + (error instanceof Error ? error.message : 'Unknown error'))
+      console.error('Error deleting bot:', error)
+      alert('Failed to delete bot')
     }
   }
 
@@ -156,18 +232,7 @@ export function BotManagement() {
                   <PencilIcon className="h-5 w-5" />
                 </button>
                 <button
-                  onClick={async () => {
-                    if (!confirm('Are you sure you want to delete this bot?')) return
-                    const { error } = await supabase
-                      .from('discord_bots')
-                      .delete()
-                      .eq('id', bot.id)
-                    if (error) {
-                      alert('Failed to delete bot')
-                      return
-                    }
-                    fetchBots()
-                  }}
+                  onClick={() => handleDelete(bot.id)}
                   className="p-2 text-gray-400 hover:text-red-400"
                 >
                   <TrashIcon className="h-5 w-5" />
