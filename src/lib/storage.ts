@@ -4,7 +4,7 @@ import imageCompression from 'browser-image-compression' // We'll need to instal
 // Define the expected response type
 // Remove PublicUrlResponse if not used
 
-export async function uploadImage(file: File) {
+export async function uploadImage(file: File): Promise<string> {
   try {
     console.log('📸 Storage: Starting image upload:', {
       name: file.name,

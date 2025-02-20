@@ -276,7 +276,7 @@ export function ChatInput({ channelId, onSendMessage, replyTo, onCancelReply, on
 
       // Upload to Supabase
       log('Uploading to Supabase...')
-      const { imageUrl } = await uploadImage(compressedFile)
+      const imageUrl = await uploadImage(compressedFile)
       log('Upload successful', { imageUrl })
 
       // Send message
