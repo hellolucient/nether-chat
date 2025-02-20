@@ -16,6 +16,7 @@ import { Message, MessageContent } from '@/types'
 import { GifPicker } from './GifPicker'
 import { StickerIcon } from './icons/StickerIcon'
 import { StickerPicker } from './StickerPicker'
+import imageCompression from 'browser-image-compression'
 
 // First, let's properly define our types at the top
 type SendStatus = 'idle' | 'sending' | 'sent'
@@ -40,6 +41,21 @@ const DEBUG = process.env.NODE_ENV === 'development'
 const log = (msg: string, data?: any) => {
   if (DEBUG) {
     console.log(`🔷 ${msg}`, data ? data : '')
+  }
+}
+
+async function compressImage(file: File) {
+  const options = {
+    maxSizeMB: 1,
+    maxWidthOrHeight: 1920,
+    useWebWorker: true
+  }
+  
+  try {
+    return await imageCompression(file, options)
+  } catch (error) {
+    console.error('Error compressing image:', error)
+    throw error
   }
 }
 
