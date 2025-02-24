@@ -89,7 +89,7 @@ function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message 
     referenced_message_author_id: referencedAuthorId,
     referenced_message_content: referencedContent,
     isFromBot: isFromBot,
-    hasBotMention: hasBotMention,
+    isBotMention: hasBotMention,
     replyingToBot: replyingToBot,
     attachments: Array.from(msg.attachments.values()).map(a => ({
       url: a.url,
