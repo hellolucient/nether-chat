@@ -18,7 +18,6 @@ export interface Message {
   referenced_message_author_display_name?: string
   referenced_message_author_username?: string
   isFromBot: boolean
-  isBotMention: boolean
   replyingToBot: boolean
   stickers: Array<{
     url: string

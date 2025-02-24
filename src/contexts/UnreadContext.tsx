@@ -30,18 +30,17 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
     if (!publicKey) return
 
     try {
-      console.log('📝 Attempting to update last_viewed:', {
-        channelId,
-        wallet: publicKey.toString(),
-        timestamp: new Date().toISOString()
-      })
+      console.log('📝 Marking channel as read:', channelId)
 
+      const now = new Date().toISOString()
+      
+      // Update last_viewed in Supabase - only update last_viewed timestamp
       const { error } = await supabase
         .from('last_viewed')
         .upsert({
           channel_id: channelId,
           wallet_address: publicKey.toString(),
-          last_viewed: new Date().toISOString()
+          last_viewed: now
         }, {
           onConflict: 'channel_id,wallet_address'
         })
@@ -51,24 +50,13 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      // Verify the update
-      const { data: updated } = await supabase
-        .from('last_viewed')
-        .select('*')
-        .eq('channel_id', channelId)
-        .eq('wallet_address', publicKey.toString())
-        .single()
-
-      console.log('🔍 Last viewed after update:', updated)
-
-      // Need to also update UI state!
+      // Update UI state immediately
       setUnreadChannels(prev => {
         const next = new Set(prev)
         next.delete(channelId)
         return next
       })
 
-      console.log('✅ Marked channel as read:', channelId)
     } catch (error) {
       console.error('Failed to mark channel as read:', error)
     }
@@ -78,34 +66,12 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
     if (!publicKey) return
 
     try {
-      // Get user's bot ID first
-      const { data: botAssignment } = await supabase
-        .from('bot_assignments')
-        .select(`
-          bot_id,
-          discord_bots (
-            bot_token,
-            discord_id
-          )
-        `)
-        .eq('wallet_address', publicKey.toString())
-        .single() as { data: BotAssignment | null }
+      const response = await fetch(`/api/channels/unread?wallet=${publicKey.toString()}`)
+      const { unreadChannels: newUnreadChannels } = await response.json()
 
-      if (!botAssignment?.discord_bots?.discord_id) return
-
-      const botId = botAssignment.discord_bots.discord_id
-
-      // Get messages that mention/reply to user's bot
-      const { data: messages } = await supabase
-        .from('messages')
-        .select('channel_id, sent_at')
-        .or(`referenced_message_author_id.eq.${botId},content.ilike.%<@${botId}>%`)
-        .order('sent_at', { ascending: false })
-
-      // Update unread channels based on these messages
-      if (messages?.length) {
-        console.log('✨ Setting unread channels:', messages.map(m => m.channel_id))
-        setUnreadChannels(new Set(messages.map(m => m.channel_id)))
+      // Only update if we have new unread channels
+      if (newUnreadChannels?.length > 0) {
+        setUnreadChannels(new Set(newUnreadChannels))
       }
     } catch (error) {
       console.error('Failed to check unread channels:', error)
@@ -116,53 +82,19 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
     if (!publicKey) return
 
     try {
-      console.log('🧹 Starting clear all unread:', {
-        wallet: publicKey.toString(),
-        unreadChannels: Array.from(unreadChannels)
-      })
-
-      // First get our bot's ID
-      const { data: botAssignment } = await supabase
-        .from('bot_assignments')
-        .select(`
-          bot_id,
-          discord_bots (
-            bot_token,
-            discord_id
-          )
-        `)
-        .eq('wallet_address', publicKey.toString())
-        .single() as { data: BotAssignment | null }
-
-      if (!botAssignment?.discord_bots?.discord_id) {
-        console.log('No bot found for wallet')
-        return
-      }
-
-      const botId = botAssignment.discord_bots.discord_id
-
-      // Get messages that mention/reply to our bot
-      const { data: messages } = await supabase
-        .from('messages')
-        .select('channel_id, sent_at')
-        .or(`referenced_message_author_id.eq.${botId},content.ilike.%<@${botId}>%`)
-        .order('sent_at', { ascending: false })
-
-      if (!messages?.length) {
-        console.log('No messages to clear')
-        return
-      }
-
+      console.log('🧹 Clearing all unread notifications')
       const now = new Date().toISOString()
-      
-      // Create last_viewed entries for all channels with messages
-      const uniqueChannels = [...new Set(messages.map(m => m.channel_id))]
-      console.log('📝 Updating last_viewed for channels:', uniqueChannels)
 
+      // Get all channels that are currently unread
+      const channelsToUpdate = Array.from(unreadChannels)
+
+      if (channelsToUpdate.length === 0) return
+
+      // Update all unread channels at once
       const { error } = await supabase
         .from('last_viewed')
         .upsert(
-          uniqueChannels.map(channelId => ({
+          channelsToUpdate.map(channelId => ({
             channel_id: channelId,
             wallet_address: publicKey.toString(),
             last_viewed: now
@@ -175,31 +107,25 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      // Clear UI state
+      // Clear UI state immediately
       setUnreadChannels(new Set())
-      console.log('✨ Cleared all unread notifications')
 
-      // Force refresh unread status
-      await checkUnreadChannels()
     } catch (error) {
       console.error('Failed to clear notifications:', error)
     }
-  }, [publicKey, unreadChannels, checkUnreadChannels])
+  }, [publicKey, unreadChannels])
 
-  // Add some debug logging to see if we're getting notifications
+  // Remove or modify the periodic check to not override manual read states
   useEffect(() => {
     if (!publicKey) return
 
-    console.log('🔔 Setting up unread check for wallet:', publicKey.toString())
-    
     // Initial check
     checkUnreadChannels()
 
-    // Set up periodic checks
+    // Set up less frequent periodic checks
     const interval = setInterval(() => {
-      console.log('🔄 Running periodic unread check...')
       checkUnreadChannels()
-    }, 30000)
+    }, 60000) // Check every minute instead of 30 seconds
 
     return () => clearInterval(interval)
   }, [publicKey, checkUnreadChannels])

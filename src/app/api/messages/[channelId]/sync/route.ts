@@ -42,6 +42,7 @@ interface MessageData {
     id: string
     name: string
   }>
+  hasBotMention: boolean
 }
 
 // Add interface for bot assignment
@@ -216,7 +217,8 @@ export async function GET(req: NextRequest, context: Context) {
           author_display_name: msg.member?.displayName || msg.author.displayName || msg.author.username,
           attachments: Array.from(msg.attachments.values()),
           embeds: msg.embeds,
-          stickers: Array.from(msg.stickers.values())
+          stickers: Array.from(msg.stickers.values()),
+          hasBotMention: msg.content?.includes('<@') && msg.content?.includes('>')
         }
       }))
 

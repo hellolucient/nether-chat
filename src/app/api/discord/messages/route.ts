@@ -14,12 +14,11 @@ export async function POST(request: Request) {
       .from('discord_bots')
       .select('discord_id, bot_name')
 
-    console.log('🍉 Bot List Check:', {
-      bots,
-      messageAuthorId: data.author.id,
-      messageContent: data.content.substring(0, 50),
+    console.log('🤖 Message details:', {
+      authorId: data.author.id,
+      content: data.content.substring(0, 50),
       mentions: data.mentions?.users,
-      referencedMessage: data.referenced_message
+      reference: data.referenced_message
     })
 
     // Check bot-related flags
@@ -54,16 +53,15 @@ export async function POST(request: Request) {
       referencedMessageAuthorId: data.referenced_message?.author?.id
     })
     
-    // Store ALL messages, not just bot-related ones
+    // Store message with only the fields that exist in our schema
     const messageData = {
       id: data.id,
       channel_id: data.channel_id,
       sender_id: data.author.id,
-      author_username: data.author.username,
-      author_display_name: data.member?.displayName || data.author.displayName || data.author.username,
       content: data.content,
       sent_at: new Date(data.timestamp).toISOString(),
-      // Remove isBotMention, isFromBot, replyingToBot
+      author_username: data.author.username,
+      author_display_name: data.member?.displayName || data.author.displayName || data.author.username,
       referenced_message_id: data.referenced_message?.id || null,
       referenced_message_author_id: data.referenced_message?.author?.id || null,
       referenced_message_content: data.referenced_message?.content || null,
@@ -78,15 +76,16 @@ export async function POST(request: Request) {
     }
 
     console.log('💾 Storing message:', {
-      ...messageData,
-      content: messageData.content.substring(0, 50) // Truncate for logging
+      id: messageData.id,
+      content: messageData.content.substring(0, 50)
     })
 
     // Store in Supabase
     const { error } = await supabase
       .from('messages')
       .upsert(messageData, {
-        onConflict: 'id'
+        onConflict: 'id',
+        count: 'exact'
       })
 
     if (error) {

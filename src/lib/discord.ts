@@ -10,6 +10,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { cleanupOldImages } from '@/lib/storage'
 import type { Message as AppMessage } from '@/types' // Import our Message type
+import { SupabaseClient } from '@supabase/supabase-js'
 
 let client: Client | null = null
 
@@ -57,9 +58,127 @@ interface MessageOptions {
   };
 }
 
+// Add this near the top of the file
+const DISCORD_LISTENER_BOT_TOKEN = process.env.DISCORD_LISTENER_BOT_TOKEN
+
+// Update or add this function
+async function initializeListenerBot() {
+  try {
+    console.log('🎧 Initializing listener bot...')
+    
+    const listenerClient = new Client({
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+      ]
+    })
+
+    // Set up message listener
+    listenerClient.on('messageCreate', async (message) => {
+      try {
+        console.log('📨 New message received:', {
+          id: message.id,
+          channelId: message.channelId,
+          authorId: message.author.id,
+          content: message.content.substring(0, 50)
+        })
+
+        const { data: bots } = await supabase
+          .from('discord_bots')
+          .select('discord_id, bot_name')
+
+        // Check if message is bot-related (for logging only)
+        const isFromBot = bots?.some(bot => bot.discord_id === message.author.id)
+        const mentionsBot = message.mentions.users.some(user => 
+          bots?.some(bot => bot.discord_id === user.id)
+        )
+        const repliedToOurBot = message.reference && 
+          bots?.some(bot => bot.discord_id === message.reference?.messageId)
+
+        // Only store message if it's bot-related
+        if (!isFromBot && !mentionsBot && !repliedToOurBot) {
+          return
+        }
+
+        // Store message with only the fields that exist in our schema
+        const messageData = {
+          id: message.id,
+          channel_id: message.channelId,
+          sender_id: message.author.id,
+          author_username: message.author.username,
+          author_display_name: message.member?.displayName || message.author.username,
+          content: message.content,
+          sent_at: message.createdAt.toISOString(),
+          referenced_message_id: message.reference?.messageId || null,
+          referenced_message_author_id: message.reference ? 
+            (await message.fetchReference()).author.id : null,
+          referenced_message_content: message.reference ? 
+            (await message.fetchReference()).content : null,
+          attachments: message.attachments.size > 0 ? 
+            Array.from(message.attachments.values()).map(a => ({
+              url: a.url,
+              content_type: a.contentType,
+              filename: a.name,
+              size: a.size
+            })) : [],
+          embeds: message.embeds || [],
+          stickers: message.stickers ? Array.from(message.stickers.values()) : []
+        }
+
+        // Store in Supabase
+        const { error } = await supabase
+          .from('messages')
+          .upsert(messageData)
+
+        if (error) {
+          console.error('❌ Error storing message:', error)
+        } else {
+          console.log('✅ Message stored in Supabase:', message.id)
+        }
+
+      } catch (error) {
+        console.error('❌ Error handling message:', error)
+      }
+    })
+
+    // Log when ready
+    listenerClient.once('ready', () => {
+      console.log('✅ Listener bot ready!')
+    })
+
+    // Login with listener bot token
+    await listenerClient.login(DISCORD_LISTENER_BOT_TOKEN)
+    console.log('✅ Listener bot logged in')
+
+    return listenerClient
+  } catch (error) {
+    console.error('❌ Failed to initialize listener bot:', error)
+    throw error
+  }
+}
+
+// Update the main initialization function
+export async function initializeDiscordClient() {
+  try {
+    console.log('🚀 Initializing Discord services...')
+    
+    // Initialize the listener bot
+    await initializeListenerBot()
+    
+    console.log('✅ Discord initialization complete')
+  } catch (error) {
+    console.error('❌ Discord initialization failed:', error)
+    throw error
+  }
+}
+
 export async function initializeDiscordBot() {
   try {
     console.log('🤖 Starting Discord bot initialization...')
+    
+    // Initialize the listener bot first
+    await initializeListenerBot()
     
     if (!client) {
       console.log('📝 Creating new Discord client...')
@@ -168,13 +287,30 @@ export async function initializeDiscordBot() {
           // Get bot name if message is from one of our bots
           const botName = bots?.find(b => b.discord_id === message.author.id)?.bot_name
 
+          function formatMentions(content: string, bots: Array<{ discord_id: string, bot_name: string }>) {
+            // Replace <@BOT_ID> with @BOT_NAME
+            let formattedContent = content
+            bots.forEach(bot => {
+              const mentionRegex = new RegExp(`<@${bot.discord_id}>`, 'g')
+              formattedContent = formattedContent.replace(mentionRegex, `@${bot.bot_name}`)
+            })
+            return formattedContent
+          }
+
+          const botMappings = bots?.map(bot => ({
+            id: bot.discord_id,
+            name: bot.bot_name
+          })) || []
+
+          const transformedContent = await transformDiscordMessage(message.content, botMappings)
+
           const messageData = {
             id: message.id,
             channel_id: message.channelId,
             sender_id: message.author.id,
             author_username: message.author.username,
             author_display_name: message.member?.displayName || message.author.displayName || message.author.username,
-            content: message.content,
+            content: transformedContent,
             sent_at: new Date(message.createdTimestamp).toISOString(),
             referenced_message_id: message.reference?.messageId || null,
             referenced_message_author_id: message.reference ? 
@@ -241,7 +377,7 @@ export async function initializeDiscordBot() {
       })
     }
 
-    await client.login(process.env.DISCORD_LISTENER_BOT_TOKEN)
+    await client.login(process.env.DISCORD_BOT_TOKEN)
     console.log('✅ Bot logged in successfully')
 
     return client
@@ -415,6 +551,11 @@ export async function getChannelMessages(channelId: string): Promise<AppMessage[
       .from('discord_bots')
       .select('discord_id, bot_name')
 
+    const botMappings = bots?.map(bot => ({
+      id: bot.discord_id,
+      name: bot.bot_name
+    })) || []
+
     // 1. First fetch from Discord
     if (!client) {
       throw new Error('Discord client not initialized')
@@ -466,9 +607,11 @@ export async function getChannelMessages(channelId: string): Promise<AppMessage[
           }
         }
 
+        const transformedContent = await transformDiscordMessage(msg.content, botMappings)
+
         const transformedMessage: AppMessage = {
           id: msg.id,
-          content: msg.content,
+          content: transformedContent,
           channel_id: msg.channelId,
           sender_id: msg.author.id,
           author_username: msg.author.username,
@@ -548,4 +691,40 @@ async function cleanupOldMessages() {
   } catch (error) {
     console.error('❌ Discord: Error in cleanupOldMessages:', error)
   }
+}
+
+interface BotMapping {
+  id: string;
+  name: string;
+}
+
+export async function transformDiscordMessage(content: string, botMappings: BotMapping[]): Promise<string> {
+  // Replace bot mentions with display names
+  let transformedContent = content;
+  
+  for (const bot of botMappings) {
+    const mentionRegex = new RegExp(`<@${bot.id}>`, 'g');
+    transformedContent = transformedContent.replace(mentionRegex, `@${bot.name}`);
+  }
+
+  // Handle other Discord message transformations
+  // ... existing code for other transformations ...
+
+  return transformedContent;
+}
+
+export async function getBotMappings(supabase: SupabaseClient): Promise<BotMapping[]> {
+  const { data: bots, error } = await supabase
+    .from('discord_bots')
+    .select('discord_id, bot_name');
+
+  if (error) {
+    console.error('Error fetching bot mappings:', error);
+    return [];
+  }
+
+  return bots.map(bot => ({
+    id: bot.discord_id,
+    name: bot.bot_name
+  }));
 }

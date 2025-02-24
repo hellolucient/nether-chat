@@ -6,10 +6,23 @@ import type { Message } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import { supabase } from '@/lib/supabase'
 
-function formatDiscordMessage(content: string): string {
-  // Handle custom emojis <:name:id> or <a:name:id>
-  return content.replace(/<a?:\w+:\d+>/g, '🔸') // Replace with a placeholder for now
-  // Later we can fetch the actual emoji URLs using the ID
+function formatDiscordMessage(content: string, botNames: Record<string, string>): JSX.Element[] {
+  // Split content into segments, preserving spaces
+  return content.split(/(<@\d+>)/).map((segment, index) => {
+    // Check if this segment is a bot mention
+    const mentionMatch = segment.match(/<@(\d+)>/)
+    if (mentionMatch) {
+      const botId = mentionMatch[1]
+      const botName = botNames[botId]
+      return (
+        <span key={index} className="font-bold text-purple-300">
+          @{botName || botId}
+        </span>
+      )
+    }
+    // Return regular text segment
+    return <span key={index}>{segment}</span>
+  })
 }
 
 function formatMessageContent(content: string) {
@@ -29,7 +42,7 @@ function formatMessageContent(content: string) {
   }
 
   // Handle custom emojis and regular text
-  return <p className="text-gray-100">{formatDiscordMessage(content)}</p>
+  return <p className="text-gray-100">{formatDiscordMessage(content, {})}</p>
 }
 
 function formatMessageWithQuotes(content: string) {
@@ -61,8 +74,16 @@ function formatDate(dateString: string) {
   }
 }
 
-function MessageContent({ message, onReplyTo }: { message: Message; onReplyTo: (message: Message) => void }) {
-  // First check for attachments (images from Discord)
+function MessageContent({ 
+  message, 
+  onReplyTo, 
+  botNames 
+}: { 
+  message: Message; 
+  onReplyTo: (message: Message) => void;
+  botNames: Record<string, string>;
+}) {
+  // Handle attachments first
   if (message.attachments && message.attachments.length > 0) {
     const images = message.attachments.filter(a => 
       a.content_type?.startsWith('image/') || a.url.match(/\.(jpg|jpeg|png|gif)$/i)
@@ -71,7 +92,9 @@ function MessageContent({ message, onReplyTo }: { message: Message; onReplyTo: (
     return (
       <div className="space-y-2">
         {message.content && (
-          <p className="text-white whitespace-pre-wrap">{message.content}</p>
+          <div className="text-white whitespace-pre-wrap">
+            {formatDiscordMessage(message.content, botNames)}
+          </div>
         )}
         
         {images.map((image, index) => (
@@ -120,14 +143,11 @@ function MessageContent({ message, onReplyTo }: { message: Message; onReplyTo: (
   // Finally, handle regular text messages
   return (
     <div className="space-y-2">
-      <p className="text-white whitespace-pre-wrap">{message.content}</p>
+      <div className="text-white whitespace-pre-wrap">
+        {formatDiscordMessage(message.content, botNames)}
+      </div>
     </div>
   )
-}
-
-interface BotInfo {
-  discord_id: string
-  bot_name: string
 }
 
 interface MessageListProps {
@@ -138,50 +158,12 @@ interface MessageListProps {
   loading: boolean
 }
 
-// Helper function to clean Discord IDs
-const cleanDiscordId = (id: string) => id.replace(/[<@>]/g, '')
-
-// Helper function to replace bot IDs with names in message content
-const replaceBotMentions = (content: string, botNames: Record<string, string>) => {
-  return content.replace(/<@(\d+)>/g, (match, id) => {
-    return `@${botNames[id] || id}`
-  })
-}
-
 // Add CSS classes for different message types
 function getMessageClasses(message: Message, botNames: Record<string, string>) {
-  const isBot = message.isFromBot
-  return `relative group flex flex-col ${
-    isBot ? 'hover:bg-[#1E1E24]' : ''
+  const isFromBot = botNames[message.sender_id] !== undefined
+  return `relative group flex flex-col p-2 rounded ${
+    isFromBot ? 'hover:bg-[#1E1E24]' : 'hover:bg-[#1E1E24]'
   }`
-}
-
-// At the top of the file, add a helper function for bot mentions
-function formatBotMentions(content: string, botNames: Record<string, string>) {
-  // First replace all bot IDs with their names
-  const contentWithNames = replaceBotMentions(content, botNames)
-  
-  // Then find and wrap all @mentions in bold spans
-  return contentWithNames.split(' ').map((word, i, arr) => {
-    if (word.startsWith('@')) {
-      // Check if this is the start of a multi-word bot name
-      let fullName = word.substring(1) // Remove @ symbol
-      let j = i + 1
-      // Keep adding words until we find the full bot name
-      while (j < arr.length && Object.values(botNames).some(name => 
-        name.toLowerCase() === (fullName + ' ' + arr[j]).toLowerCase()
-      )) {
-        fullName += ' ' + arr[j]
-        j++
-      }
-      
-      // If we found a bot name, return it wrapped in a span
-      if (Object.values(botNames).some(name => name.toLowerCase() === fullName.toLowerCase())) {
-        return <span key={i} className="font-bold text-purple-300">@{fullName}</span>
-      }
-    }
-    return <span key={i}>{word} </span>
-  })
 }
 
 export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo }: MessageListProps) {
@@ -326,8 +308,8 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
   useEffect(() => {
     console.log('Message flags:', messages.map(m => ({
       content: m.content,
-      isFromBot: botNames[m.sender_id] || false,
-      isBotMention: m.content.includes('<@') && m.content.includes('>'),
+      isFromBot: botNames[m.sender_id] !== undefined,
+      hasBotMention: m.content?.includes('<@') && m.content?.includes('>'),
       replyingToBot: m.referenced_message_author_id && botNames[m.referenced_message_author_id]
     })))
   }, [messages, botNames])
@@ -340,8 +322,8 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
         id: m.id,
         content: m.content.substring(0, 50),
         flags: {
-          isFromBot: botNames[m.sender_id] || false,
-          isBotMention: m.content.includes('<@') && m.content.includes('>'),
+          isFromBot: botNames[m.sender_id] !== undefined,
+          hasBotMention: m.content?.includes('<@') && m.content?.includes('>'),
           replyingToBot: m.referenced_message_author_id && botNames[m.referenced_message_author_id]
         },
         appliedClass: getMessageClasses(m, botNames)
@@ -364,7 +346,7 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
     fetchBotIds()
   }, [])
 
-  // Add near the top of MessageList component
+  // Update this effect
   useEffect(() => {
     // Get last 3 messages
     const recentMessages = messages.slice(-3)
@@ -376,9 +358,9 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
         content: m.content.substring(0, 50),
         author: m.author_username,
         flags: {
-          isFromBot: m.isFromBot,
-          isBotMention: m.isBotMention,
-          replyingToBot: m.replyingToBot
+          isFromBot: botNames[m.sender_id] !== undefined,  // Changed from m.isFromBot
+          hasBotMention: m.content?.includes('<@') && m.content?.includes('>'),  // Changed from m.isBotMention
+          replyingToBot: m.referenced_message_author_id && botNames[m.referenced_message_author_id]  // Changed from m.replyingToBot
         },
         sender_id: m.sender_id,
         referenced_message_author_id: m.referenced_message_author_id
@@ -416,13 +398,18 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
       ) : (
         <div className="space-y-4 p-4">
           {messages.map((message) => (
-            <div key={message.id} className="group hover:bg-[#1E1E24] p-2 rounded">
+            <div key={message.id} className={getMessageClasses(message, botNames)}>
               {message.referenced_message_content && (
                 <div className="ml-2 pl-2 mb-1 border-l-2 border-gray-600 text-gray-400 text-sm">
                   <span className="text-gray-300">
-                    Replying to <span className="font-bold">{messages.find(m => m.sender_id === message.referenced_message_author_id)?.author_display_name || message.referenced_message_author_id}</span>
+                    Replying to{' '}
+                    <span className="font-bold">
+                      {botNames[message.referenced_message_author_id || ''] || 
+                        messages.find(m => m.sender_id === message.referenced_message_author_id)?.author_display_name || 
+                        message.referenced_message_author_id}
+                    </span>
                   </span>
-                  {' '}{message.referenced_message_content}
+                  {' '}{formatDiscordMessage(message.referenced_message_content, botNames)}
                 </div>
               )}
               
@@ -430,7 +417,7 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
                 <span className="font-bold text-purple-300">
                   {message.author_display_name || message.author_username}
                 </span>
-                {message.isFromBot && (
+                {botNames[message.sender_id] && (
                   <span className="ml-2 text-xs bg-[#5865F2] text-white px-1 rounded">
                     APP
                   </span>
@@ -450,7 +437,11 @@ export function MessageList({ messages, loading, channelId, onRefresh, onReplyTo
                 </button>
               </div>
 
-              <MessageContent message={message} onReplyTo={onReplyTo} />
+              <MessageContent 
+                message={message} 
+                onReplyTo={onReplyTo} 
+                botNames={botNames}
+              />
             </div>
           ))}
         </div>

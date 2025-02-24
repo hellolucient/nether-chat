@@ -48,9 +48,7 @@ function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message 
   })
 
   const isFromBot = bots.some(bot => bot.discord_id === msg.author.id)
-  const isBotMention = msg.mentions.users.some(user => 
-    bots.some(bot => bot.discord_id === user.id)
-  )
+  const hasBotMention = msg.content?.includes('<@') && msg.content?.includes('>')
   const replyingToBot = msg.reference?.messageId ? 
     bots.some(bot => bot.discord_id === msg.reference?.messageId) : 
     false
@@ -59,7 +57,7 @@ function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message 
   console.log('⛳ Flag Check:', {
     id: msg.id,
     isFromBot,
-    isBotMention,
+    hasBotMention,
     replyingToBot
   })
 
@@ -91,7 +89,7 @@ function transformDiscordMessage(msg: DiscordMessage, bots: BotData[]): Message 
     referenced_message_author_id: referencedAuthorId,
     referenced_message_content: referencedContent,
     isFromBot: isFromBot,
-    isBotMention: isBotMention,
+    hasBotMention: hasBotMention,
     replyingToBot: replyingToBot,
     attachments: Array.from(msg.attachments.values()).map(a => ({
       url: a.url,

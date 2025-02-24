@@ -59,11 +59,19 @@ create table channel_mappings (
 ### Messages
 ```sql
 create table messages (
-  id uuid default gen_random_uuid() primary key,
+  id text primary key,
   channel_id text not null,
   sender_id text not null,
   content text not null,
-  sent_at timestamp with time zone default timezone('utc'::text, now()) not null
+  sent_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  author_username text,
+  author_display_name text,
+  referenced_message_id text,
+  referenced_message_author_id text,
+  referenced_message_content text,
+  attachments jsonb[],
+  embeds jsonb[],
+  stickers jsonb[]
 );
 ```
 

@@ -65,14 +65,14 @@ export async function getChannelMessages(channelId: string, walletAddress: strin
   const transformed = messages.map(msg => {
     const isBot = bot?.discord_id === msg.sender_id
     // Check for bot mention using Discord ID format
-    const isBotMention = msg.content.includes(`<@${bot?.discord_id}>`)
+    const hasBotMention = msg.content.includes(`<@${bot?.discord_id}>`)
     const replyingToBot = msg.referenced_message_id && 
       bot?.discord_id === msg.referenced_message_author_id
 
     console.log('🔍 Message flags:', {
       content: msg.content,
       botId: bot?.discord_id,
-      isBotMention,  // This should now be true for messages like <@1336956952546377768>
+      hasBotMention,  // This should now be true for messages like <@1336956952546377768>
       isBot,
       replyingToBot
     })
@@ -87,7 +87,7 @@ export async function getChannelMessages(channelId: string, walletAddress: strin
       },
       timestamp: msg.sent_at,
       isFromBot: isBot,
-      isBotMention,
+      hasBotMention,
       replyingToBot,
       referenced_message_id: msg.referenced_message_id,
       referenced_message_content: msg.referenced_message_content,
@@ -141,20 +141,39 @@ export async function getUnreadStatus() {
       return {}
     }
 
+    // Get bot IDs first
+    const { data: bots } = await supabase
+      .from('discord_bots')
+      .select('discord_id')
+
+    const botIds = new Set(bots?.map(b => b.discord_id) || [])
+
     // Get latest messages for each channel
-    const { data: latestMessages, error: messagesError } = await supabase
+    const { data: messages, error: messagesError } = await supabase
       .from('messages')
-      .select('channel_id, sent_at')
-      .order('sent_at', { ascending: false })
+      .select('channel_id, sent_at, sender_id, referenced_message_author_id, content')
 
     if (messagesError) {
       console.error('❌ Supabase: Error fetching messages:', messagesError)
       return {}
     }
 
-    // Calculate unread status based on timestamps
-    const unreadStatus = (lastViewed || []).reduce((acc: Record<string, boolean>, view) => {
-      const latestMessage = latestMessages?.find(m => m.channel_id === view.channel_id)
+    // Calculate unread status for each channel
+    const unreadStatus = lastViewed?.reduce((acc, view) => {
+      // Find latest bot-related message for this channel
+      const latestMessage = messages?.filter(m => {
+        // Message is bot-related if:
+        const isFromBot = botIds.has(m.sender_id)
+        const replyingToBot = botIds.has(m.referenced_message_author_id || '')
+        const mentionsBot = botIds.size > 0 && 
+          Array.from(botIds).some(id => m.content.includes(`<@${id}>`))
+
+        return m.channel_id === view.channel_id && 
+          (isFromBot || replyingToBot || mentionsBot)
+      }).sort((a, b) => 
+        new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime()
+      )[0]
+
       acc[view.channel_id] = latestMessage ? 
         new Date(latestMessage.sent_at) > new Date(view.last_viewed) : 
         false

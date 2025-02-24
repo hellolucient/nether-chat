@@ -22,6 +22,7 @@ export function Chat({ channelId }: ChatProps) {
   const [checkingAccess, setCheckingAccess] = useState(true)  // New state
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const syncInProgress = useRef(false)
+  const [loading, setLoading] = useState(true)  // Add loading state
 
   // Add ref for message container
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -75,28 +76,20 @@ export function Chat({ channelId }: ChatProps) {
   )
 
   const fetchMessages = useCallback(async () => {
+    if (!publicKey?.toString()) return
+    
     try {
-      if (!publicKey?.toString()) return
-      
-      // Remove debounce and wait for sync to complete
-      if (publicKey?.toString() && !syncInProgress.current) {
-        syncInProgress.current = true
-        console.log('🔄 Starting Discord sync...')
-        await fetch(`/api/messages/${channelId}/sync?wallet=${publicKey.toString()}`)
-        syncInProgress.current = false
-      }
-
-      // Now get messages after sync completes
+      setLoading(true) // Set loading when fetch starts
       const response = await fetch(`/api/messages/${channelId}?wallet=${publicKey.toString()}`)
       const data = await response.json()
       
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch messages')
+      if (data.messages) {
+        setMessages(data.messages)
       }
-
-      setMessages(data.messages || [])
     } catch (error) {
       console.error('Failed to fetch messages:', error)
+    } finally {
+      setLoading(false) // Clear loading when done
     }
   }, [channelId, publicKey])
 
@@ -138,11 +131,21 @@ export function Chat({ channelId }: ChatProps) {
     }
   };
 
-  // Initial load
   useEffect(() => {
-    if (!channelId || !publicKey) return
-    fetchMessages()
-  }, [channelId, publicKey, fetchMessages])
+    if (channelId && publicKey) {
+      // Mark channel as read immediately
+      markChannelAsRead(channelId)
+      // Fetch messages
+      fetchMessages()
+      
+      // Stop checking for unreads while viewing this channel
+      const intervalId = setInterval(() => {
+        markChannelAsRead(channelId) // Keep marking as read periodically
+      }, 30000)
+
+      return () => clearInterval(intervalId)
+    }
+  }, [channelId, publicKey, fetchMessages, markChannelAsRead])
 
   useEffect(() => {
     console.log('💬 Chat: Messages received from API:', messages.map(m => ({
@@ -193,17 +196,22 @@ export function Chat({ channelId }: ChatProps) {
   return (
     <div className="h-full flex flex-col">
       <div className="flex-1 min-h-0 relative overflow-hidden">
-        <MessageList 
-          messages={messages} 
-          loading={false} // Don't show loading for message updates
-          channelId={channelId}
-          onRefresh={fetchMessages}
-          onReplyTo={setReplyTo}
-        />
-        {sendingMessage && (
-          <div className="absolute bottom-4 right-4 bg-purple-600 text-white px-3 py-1 rounded-full text-sm">
-            Sending...
+        {loading ? (
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center space-y-4">
+              <div className="text-2xl text-purple-300 animate-pulse">
+                Loading chatter incoming...
+              </div>
+            </div>
           </div>
+        ) : (
+          <MessageList 
+            messages={messages} 
+            loading={false}
+            channelId={channelId}
+            onRefresh={fetchMessages}
+            onReplyTo={setReplyTo}
+          />
         )}
       </div>
       

@@ -5,11 +5,13 @@ import { TextChannel } from 'discord.js'
 
 // Update interfaces at top of file
 interface DiscordBot {
-  discord_id: string  // Changed from bot_id
+  discord_id: string
 }
 
 interface BotAssignment {
-  discord_bots: DiscordBot  // Single bot, not array
+  discord_bots: {
+    discord_id: string
+  }
 }
 
 interface LastViewed {
@@ -37,12 +39,12 @@ export async function GET(request: Request) {
     const { data: botAssignment } = await supabase
       .from('bot_assignments')
       .select(`
-        discord_bots!inner (
+        discord_bots (
           discord_id
         )
       `)
       .eq('wallet_address', wallet)
-      .single() as { data: BotAssignment | null }
+      .single() as unknown as { data: { discord_bots: { discord_id: string } } }
 
     if (!botAssignment?.discord_bots?.discord_id) {
       return NextResponse.json({ unreadChannels: [] })
@@ -52,7 +54,7 @@ export async function GET(request: Request) {
 
     console.log('🤖 Found bot:', {
       wallet,
-      botId: botAssignment?.discord_bots?.discord_id
+      botId: botAssignment.discord_bots.discord_id
     })
 
     // Get last viewed timestamps for this wallet
@@ -71,14 +73,14 @@ export async function GET(request: Request) {
       lastViewed: Array.from(lastViewedMap.entries())
     })
 
-    // Get messages that mention/reply to user's bot
+    // Get messages that are bot-related (from/mentions/replies to bot)
     const { data: messages } = await supabase
       .from('messages')
       .select('channel_id, sent_at')
-      .or(`referenced_message_author_id.eq.${botId},content.ilike.%<@${botId}>%`)
+      .or(`sender_id.eq.${botId},referenced_message_author_id.eq.${botId},content.ilike.%<@${botId}>%`)
       .order('sent_at', { ascending: false })
 
-    // Check which messages are unread
+    // Check which channels have unread messages
     const unreadChannels = messages?.reduce((acc: string[], msg) => {
       const lastViewedTime = lastViewedMap.get(msg.channel_id) || '1970-01-01'
       if (new Date(msg.sent_at) > new Date(lastViewedTime) && !acc.includes(msg.channel_id)) {
