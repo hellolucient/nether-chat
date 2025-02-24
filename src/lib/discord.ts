@@ -328,9 +328,6 @@ export async function initializeDiscordBot() {
                 height: a.height
               })) : [],
             isFromBot: message.author.bot,
-            isBotMention: message.mentions.users.some(user => 
-              bots?.some(bot => bot.discord_id === user.id)
-            ),
             replyingToBot: message.reference ? 
               bots?.some(bot => bot.discord_id === message.reference?.messageId) : 
               false
@@ -624,9 +621,6 @@ export async function getChannelMessages(channelId: string): Promise<AppMessage[
           embeds: [],
           stickers: [],
           isFromBot: msg.author.bot,
-          isBotMention: msg.mentions.users.some(user => 
-            bots?.some(bot => bot.discord_id === user.id) ?? false
-          ),
           replyingToBot: msg.reference ? 
             (bots?.some(bot => bot.discord_id === msg.reference?.messageId) ?? false) : 
             false
