@@ -77,7 +77,6 @@ export async function GET(request: Request) {
     const { data: messages } = await supabase
       .from('messages')
       .select('channel_id, sent_at')
-      .or(`sender_id.eq.${botId},referenced_message_author_id.eq.${botId},content.ilike.%<@${botId}>%`)
       .order('sent_at', { ascending: false })
 
     // Check which channels have unread messages

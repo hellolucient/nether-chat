@@ -66,13 +66,67 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
     if (!publicKey) return
 
     try {
-      const response = await fetch(`/api/channels/unread?wallet=${publicKey.toString()}`)
-      const { unreadChannels: newUnreadChannels } = await response.json()
+      // First get the current user's bot ID
+      const { data: botAssignment } = await supabase
+        .from('bot_assignments')
+        .select(`
+          bot_id,
+          discord_bots (
+            discord_id
+          )
+        `)
+        .eq('wallet_address', publicKey.toString())
+        .single()
 
-      // Only update if we have new unread channels
-      if (newUnreadChannels?.length > 0) {
-        setUnreadChannels(new Set(newUnreadChannels))
+      if (!botAssignment?.discord_bots?.discord_id) {
+        console.log('No bot found for wallet:', publicKey.toString())
+        return
       }
+
+      const botId = botAssignment.discord_bots.discord_id
+      console.log('Checking unread for bot:', botId)
+
+      // Get last viewed times
+      const { data: lastViewed } = await supabase
+        .from('last_viewed')
+        .select('channel_id, last_viewed')
+        .eq('wallet_address', publicKey.toString())
+
+      // Get messages that are:
+      // 1. From this bot
+      // 2. Replies to this bot
+      // 3. Mention this bot
+      const { data: messages } = await supabase
+        .from('messages')
+        .select('*')
+        .or(`sender_id.eq.${botId},referenced_message_author_id.eq.${botId}`)
+        .order('sent_at', { ascending: false })
+
+      console.log('Found messages:', {
+        total: messages?.length || 0,
+        botId,
+        lastViewed: lastViewed?.length || 0
+      })
+
+      // Update unread state based on bot messages only
+      const newUnread = new Set<string>()
+      messages?.forEach(msg => {
+        const lastViewedTime = lastViewed?.find(lv => 
+          lv.channel_id === msg.channel_id
+        )?.last_viewed || '1970-01-01'
+
+        if (new Date(msg.sent_at) > new Date(lastViewedTime)) {
+          newUnread.add(msg.channel_id)
+          console.log('Adding unread channel:', {
+            channel: msg.channel_id,
+            messageTime: msg.sent_at,
+            lastViewed: lastViewedTime
+          })
+        }
+      })
+
+      console.log('Setting unread channels:', Array.from(newUnread))
+      setUnreadChannels(newUnread)
     } catch (error) {
       console.error('Failed to check unread channels:', error)
     }

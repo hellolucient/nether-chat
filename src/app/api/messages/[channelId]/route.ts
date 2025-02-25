@@ -111,16 +111,19 @@ export const revalidate = 0
 // GET handler that fetches messages
 export async function GET(req: NextRequest, context: Context) {
   const { channelId } = context.params
-  
+  console.log('\n🟣 ==================== MESSAGE FETCH START ====================')
+  console.log('📥 Fetching messages for channel:', channelId)
+
   // Get messages with all fields using *
   const { data: messages, error } = await supabase
     .from('messages')
     .select('*')
     .eq('channel_id', channelId)
     .order('sent_at', { ascending: true })
+    // We might need to add .limit(300) here to match what we want to show
 
   if (error) {
-    console.error('Failed to fetch messages:', error)
+    console.error('❌ Failed to fetch messages:', error)
     return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 })
   }
 
@@ -135,19 +138,44 @@ export async function GET(req: NextRequest, context: Context) {
     })
   }
 
+  console.log(`✅ Fetched ${messages?.length || 0} messages from database`)
+  console.log('🟣 ==================== MESSAGE FETCH END ====================\n')
+
   return NextResponse.json({ messages })
 }
 
 // POST handler for sending messages
 export async function POST(request: Request, context: Context) {
+  console.log('\n🔵 ==================== MESSAGE SEND START ====================')
+  const requestId = Math.random().toString(36).substring(7)
+  console.log(`🚀 [${requestId}] Message POST request started`)
+  
   try {
     const { channelId } = context.params
     const { content, reply } = await request.json()
     const walletAddress = request.headers.get('x-wallet-address')
 
+    console.log(`📝 [${requestId}] Request details:`, {
+      channelId,
+      walletAddress,
+      contentPreview: typeof content === 'string' ? 
+        content.substring(0, 50) : 
+        content.content.substring(0, 50),
+      hasReply: !!reply
+    })
+
     if (!walletAddress || !channelId) {
+      console.log(`❌ [${requestId}] Missing required fields:`, {
+        hasWallet: !!walletAddress,
+        hasChannel: !!channelId
+      })
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
+
+    // Get bots list first
+    const { data: bots } = await supabase
+      .from('discord_bots')
+      .select('discord_id, bot_name')
 
     console.log('📤 Sending message to channel:', channelId)
     
@@ -173,50 +201,77 @@ export async function POST(request: Request, context: Context) {
     
     // Get latest messages including our just-sent one
     const messages = await channel.messages.fetch({ limit: 50 })
-    console.log('📥 Fetched messages from Discord:', messages.size)
+    console.log('⬇️ Fetched from Discord:', messages.size, 'messages for channel:', channelId)
+    
+    // After fetching from Discord
+    console.log('⬇️ Messages from Discord:', messages.map(m => ({
+      id: m.id,
+      author: m.author.username,
+      isBot: m.author.bot,
+      content: m.content.substring(0, 50)
+    })))
     
     // Store in Supabase
+    console.log('🔄 Starting message storage:', {
+      channelId,
+      messageCount: messages.size,
+      firstMessage: Array.from(messages.values())[0]?.content.substring(0, 50)
+    })
+
+    const messagesToStore = Array.from(messages.values()).map(m => ({
+      id: m.id,
+      channel_id: channelId,
+      sender_id: m.author.id,
+      content: m.content,
+      sent_at: m.createdAt.toISOString(),
+      author_username: m.author.username,
+      author_display_name: m.member?.displayName || m.author.displayName || m.author.username,
+      referenced_message_id: m.reference?.messageId || null,
+      referenced_message_author_id: m.reference?.messageId ? messages.get(m.reference.messageId)?.author.id : null,
+      referenced_message_content: m.reference?.messageId ? messages.get(m.reference.messageId)?.content : null,
+      attachments: Array.from(m.attachments.values()).map(a => ({
+        url: a.url,
+        content_type: a.contentType,
+        filename: a.name,
+        size: a.size
+      })),
+      embeds: m.embeds,
+      stickers: Array.from(m.stickers.values()).map(s => ({
+        url: s.url,
+        name: s.name
+      }))
+    }))
+
+    console.log('📦 Prepared messages for storage:', {
+      count: messagesToStore.length,
+      sample: messagesToStore[0]
+    })
+
     const { data: storedMessages, error } = await supabase
       .from('messages')
-      .upsert(
-        messages.map(m => {
-          const referencedMessage = m.reference?.messageId 
-            ? messages.get(m.reference.messageId)
-            : null;
-
-          return {
-            id: m.id,
-            channel_id: channelId,
-            sender_id: m.author.id,
-            content: m.content,
-            sent_at: m.createdAt.toISOString(),
-            referenced_message_id: m.reference?.messageId || null,
-            referenced_message_author_id: referencedMessage?.author.id || null,
-            author_username: m.author.username,
-            attachments: m.attachments.size > 0 ? Array.from(m.attachments.values()) : [],
-            embeds: m.embeds.length > 0 ? m.embeds : [],
-            stickers: [],
-            referenced_message_content: referencedMessage?.content || null,
-            author_display_name: m.author.displayName || m.author.username
-          };
-        })
-      )
+      .upsert(messagesToStore)
       .select('*')
       .order('sent_at', { ascending: true })
 
     if (error) {
-      console.error('❌ Supabase upsert error:', error)
+      console.error('❌ Supabase storage error:', error)
       throw error
+    } else {
+      console.log('✅ Successfully stored messages:', {
+        attempted: messagesToStore.length,
+        stored: storedMessages?.length || 0,
+        firstStored: storedMessages?.[0]?.content.substring(0, 50)
+      })
     }
 
-    console.log('💾 Stored messages in Supabase:', storedMessages?.length || 0)
-
+    console.log('🔵 ==================== MESSAGE SEND END ====================\n')
     return NextResponse.json({ 
       success: true,
       messages: storedMessages || []
     })
   } catch (error) {
     console.error('❌ Error sending message:', error)
+    console.log('🔵 ==================== MESSAGE SEND ERROR ====================\n')
     return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
   }
 } 

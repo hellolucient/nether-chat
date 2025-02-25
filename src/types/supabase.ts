@@ -34,6 +34,26 @@ export type Database = {
           sender_id: string
           content: string
           sent_at: string
+          author_username: string | null
+          author_display_name: string | null
+          referenced_message_id: string | null
+          referenced_message_author_id: string | null
+          referenced_message_content: string | null
+          attachments: Array<{
+            url: string
+            content_type?: string
+            filename?: string
+            size?: number
+          }> | null
+          embeds: Array<{
+            type: string
+            url?: string
+            image?: { url: string }
+          }> | null
+          stickers: Array<{
+            url: string
+            name: string
+          }> | null
         }
         Insert: {
           id: string
@@ -41,6 +61,26 @@ export type Database = {
           sender_id: string
           content: string
           sent_at: string
+          author_username?: string | null
+          author_display_name?: string | null
+          referenced_message_id?: string | null
+          referenced_message_author_id?: string | null
+          referenced_message_content?: string | null
+          attachments?: Array<{
+            url: string
+            content_type?: string
+            filename?: string
+            size?: number
+          }> | null
+          embeds?: Array<{
+            type: string
+            url?: string
+            image?: { url: string }
+          }> | null
+          stickers?: Array<{
+            url: string
+            name: string
+          }> | null
         }
       }
       last_viewed: {

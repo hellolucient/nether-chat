@@ -96,11 +96,6 @@ async function initializeListenerBot() {
         const repliedToOurBot = message.reference && 
           bots?.some(bot => bot.discord_id === message.reference?.messageId)
 
-        // Only store message if it's bot-related
-        if (!isFromBot && !mentionsBot && !repliedToOurBot) {
-          return
-        }
-
         // Store message with only the fields that exist in our schema
         const messageData = {
           id: message.id,
