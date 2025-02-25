@@ -13,8 +13,8 @@ interface UnreadContextType {
 export const UnreadContext = createContext<UnreadContextType | null>(null)
 
 interface DiscordBot {
-  bot_token: string
   discord_id: string
+  bot_name: string
 }
 
 interface BotAssignment {
@@ -72,11 +72,12 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
         .select(`
           bot_id,
           discord_bots (
-            discord_id
+            discord_id,
+            bot_name
           )
         `)
         .eq('wallet_address', publicKey.toString())
-        .single()
+        .single() as { data: BotAssignment | null }
 
       if (!botAssignment?.discord_bots?.discord_id) {
         console.log('No bot found for wallet:', publicKey.toString())
